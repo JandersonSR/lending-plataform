@@ -1,0 +1,221 @@
+{{- /*
+Uma Application por componente. A ONDA (sync-wave) ordena a criação; como a saúde de
+Application foi restaurada no argocd-cm (infra/terraform/20-plataforma/valores/argocd.yaml),
+a raiz só passa para a próxima onda quando todas as Applications da onda atual estão Healthy.
+  -3 operadores que o Terraform não instala (Keycloak) e a pilha de observabilidade (CRDs);
+     criam o próprio namespace (a onda -2 aplica por cima os rótulos de Pod Security)
+  -2 configuração de plataforma: namespaces, Gateway, emissor ACME, lojas de segredo, política
+  -1 dados (Kafka, Dragonfly) e o OTel Collector
+   0 Keycloak (CR + realm) e regras/dashboards do CreditFlow
+   1 a aplicação (ApplicationSet, arquivos/applicationset-creditflow.yaml)
+*/ -}}
+{{- $v := .Values }}
+{{- $amb := printf "gitops/ambientes/%s" $v.ambiente }}
+# ---------------------------------- onda -3 ----------------------------------
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keycloak-operador
+  {{- include "raiz.meta" (dict "onda" -3) | nindent 2 }}
+spec:
+  project: creditflow
+  source:
+    repoURL: https://github.com/keycloak/keycloak-k8s-resources.git
+    targetRevision: {{ $v.versoes.keycloak | quote }}
+    path: kubernetes
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: keycloak
+  {{- include "raiz.sync" (dict "criarNs" true) | nindent 2 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  {{- include "raiz.meta" (dict "onda" -3) | nindent 2 }}
+spec:
+  project: creditflow
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: {{ $v.versoes.kubePrometheusStack | quote }}
+      helm:
+        releaseName: kube-prometheus-stack
+        valueFiles:
+          - $valores/deploy/k8s/observabilidade/valores/kube-prometheus-stack.yaml
+    - repoURL: {{ $v.repositorio }}
+      targetRevision: {{ $v.revisao }}
+      ref: valores
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observabilidade
+  {{- include "raiz.sync" (dict "criarNs" true) | nindent 2 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: loki
+  {{- include "raiz.meta" (dict "onda" -3) | nindent 2 }}
+spec:
+  project: creditflow
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: loki
+      targetRevision: {{ $v.versoes.loki | quote }}
+      helm:
+        valueFiles:
+          - $valores/deploy/k8s/observabilidade/valores/loki.yaml
+    - repoURL: {{ $v.repositorio }}
+      targetRevision: {{ $v.revisao }}
+      ref: valores
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observabilidade
+  {{- include "raiz.sync" (dict "criarNs" true) | nindent 2 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tempo
+  {{- include "raiz.meta" (dict "onda" -3) | nindent 2 }}
+spec:
+  project: creditflow
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: tempo
+      targetRevision: {{ $v.versoes.tempo | quote }}
+      helm:
+        valueFiles:
+          - $valores/deploy/k8s/observabilidade/valores/tempo.yaml
+    - repoURL: {{ $v.repositorio }}
+      targetRevision: {{ $v.revisao }}
+      ref: valores
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observabilidade
+  {{- include "raiz.sync" (dict "criarNs" true) | nindent 2 }}
+---
+# ---------------------------------- onda -2 ----------------------------------
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: plataforma
+  {{- include "raiz.meta" (dict "onda" -2) | nindent 2 }}
+spec:
+  project: creditflow
+  source:
+    repoURL: {{ $v.repositorio }}
+    targetRevision: {{ $v.revisao }}
+    path: deploy/k8s/plataforma
+    helm:
+      valuesObject:
+        ambiente: {{ $v.ambiente }}
+        dominio: {{ $v.dominio }}
+        acme:
+          {{- toYaml $v.acme | nindent 10 }}
+        azure:
+          tenantId: {{ $v.azure.tenantId | quote }}
+          keyVaultUrl: {{ $v.azure.keyVaultUrl | quote }}
+          esoClientId: {{ $v.azure.esoClientId | quote }}
+          ipPublicoNome: {{ $v.azure.ipPublicoNome | quote }}
+          grupoRecursosIp: {{ $v.azure.grupoRecursosIp | quote }}
+        assinatura:
+          imagens: {{ printf "harbor.%s/creditflow/**" $v.dominio | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  {{- include "raiz.sync" (dict) | nindent 2 }}
+---
+# ---------------------------------- onda -1 ----------------------------------
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dados
+  {{- include "raiz.meta" (dict "onda" -1) | nindent 2 }}
+spec:
+  project: creditflow
+  source:
+    repoURL: {{ $v.repositorio }}
+    targetRevision: {{ $v.revisao }}
+    path: deploy/k8s/dados
+    helm:
+      valueFiles:
+        - {{ printf "../../../%s/dados.yaml" $amb }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: creditflow-dados
+  # Banco de mensagens não se apaga por engano: sem prune automático aqui.
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: otel-collector
+  {{- include "raiz.meta" (dict "onda" -1) | nindent 2 }}
+spec:
+  project: creditflow
+  sources:
+    - repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+      chart: opentelemetry-collector
+      targetRevision: {{ $v.versoes.otelCollector | quote }}
+      helm:
+        valueFiles:
+          - $valores/deploy/k8s/observabilidade/valores/otel-collector.yaml
+    - repoURL: {{ $v.repositorio }}
+      targetRevision: {{ $v.revisao }}
+      ref: valores
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observabilidade
+  {{- include "raiz.sync" (dict) | nindent 2 }}
+---
+# ---------------------------------- onda 0 -----------------------------------
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keycloak
+  {{- include "raiz.meta" (dict "onda" 0) | nindent 2 }}
+spec:
+  project: creditflow
+  source:
+    repoURL: {{ $v.repositorio }}
+    targetRevision: {{ $v.revisao }}
+    path: deploy/k8s/keycloak
+    helm:
+      valueFiles:
+        - {{ printf "../../../%s/keycloak.yaml" $amb }}
+      valuesObject:
+        dominio: {{ $v.dominio }}
+        banco:
+          host: {{ $v.azure.postgresHost | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: keycloak
+  {{- include "raiz.sync" (dict) | nindent 2 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observabilidade
+  {{- include "raiz.meta" (dict "onda" 0) | nindent 2 }}
+spec:
+  project: creditflow
+  source:
+    repoURL: {{ $v.repositorio }}
+    targetRevision: {{ $v.revisao }}
+    path: deploy/k8s/observabilidade
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observabilidade
+  {{- include "raiz.sync" (dict) | nindent 2 }}
+---
+# ---------------------------------- onda 1 -----------------------------------
+# O ApplicationSet usa templates Go próprios ({{ "{{" }} .metadata... {{ "}}" }}); vem de um arquivo
+# para o Helm não tentar interpretá-los.
+{{ .Files.Get "arquivos/applicationset-creditflow.yaml" }}

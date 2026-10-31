@@ -1,0 +1,31 @@
+{{- /*
+Credencial de PULL do Harbor para o namespace creditflow (imagePullSecrets: harbor-pull).
+Robô "robot$creditflow+pull" criado no Harbor com permissão SÓ de pull no projeto creditflow;
+o nome e o token vão para o Key Vault à mão, uma vez (lição 10.2):
+  az keyvault secret set --vault-name <kv> -n harbor-robo-pull-usuario --value 'robot$creditflow+pull'
+  az keyvault secret set --vault-name <kv> -n harbor-robo-pull-token   --value '<token>'
+*/ -}}
+{{- $host := printf "harbor.%s" .Values.dominio }}
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: harbor-pull
+  namespace: creditflow
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: azure-kv
+  target:
+    name: harbor-pull
+    creationPolicy: Owner
+    template:
+      type: kubernetes.io/dockerconfigjson
+      engineVersion: v2
+      data:
+        .dockerconfigjson: '{"auths":{"{{ $host }}":{"username":"{{ "{{" }} .usuario {{ "}}" }}","password":"{{ "{{" }} .token {{ "}}" }}","auth":"{{ "{{" }} printf "%s:%s" .usuario .token | b64enc {{ "}}" }}"}}}'
+  data:
+    - secretKey: usuario
+      remoteRef: { key: harbor-robo-pull-usuario }
+    - secretKey: token
+      remoteRef: { key: harbor-robo-pull-token }

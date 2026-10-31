@@ -1,0 +1,56 @@
+# KEDA para o worker-pagamentos: escala pelo LAG do grupo creditflow-pagamentos no tópico
+# creditflow.propostas.v1. CPU não serve: o worker passa o tempo esperando o gateway PIX e o Postgres
+# (I/O-bound); com a fila crescendo, a CPU continua baixa e um HPA por CPU não faria nada.
+#
+# Conta do KEDA (lição 8.5):  desejadas = min( ceil(lagTotal / lagThreshold), partições, maxReplicaCount )
+#   ex.: lag 230 com lagThreshold 50  →  ceil(4,6) = 5 réplicas;  lag 900 → 18 → limitado a 6 (partições)
+# Uma 7ª réplica ficaria sem partição: o Kafka dá cada partição a UM membro do grupo.
+# Mesmos valores do chart (perfis.worker-pagamentos.autoescala). Não aplique os dois juntos.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: creditflow-worker-pagamentos
+  namespace: creditflow
+  labels:
+    app.kubernetes.io/name: creditflow
+    app.kubernetes.io/component: worker-pagamentos
+spec:
+  scaleTargetRef:
+    name: creditflow-worker-pagamentos
+  minReplicaCount: 1     # 1 e não 0: desembolso é dinheiro do cliente; o 1º evento não espera pod subir
+  maxReplicaCount: 6     # = partições de creditflow.propostas.v1
+  pollingInterval: 15    # de quanto em quanto tempo o KEDA lê o lag
+  cooldownPeriod: 120    # só vale para ir a 0; com min 1, quem segura a descida é o behavior abaixo
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 120   # cada descida = rebalanceamento do grupo; não fique oscilando
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: creditflow-kafka-bootstrap.creditflow-dados.svc:9093
+        consumerGroup: creditflow-pagamentos     # TEM de ser o GroupId do código (PagamentosModule.GrupoDeConsumidores)
+        topic: creditflow.propostas.v1
+        lagThreshold: "50"                       # lag alvo POR réplica
+        activationLagThreshold: "0"
+        offsetResetPolicy: earliest              # igual ao AutoOffsetReset do consumidor
+        allowIdleConsumers: "false"              # nunca mais réplicas que partições
+        ensureEvenDistributionOfPartitions: "true"  # com 6 partições: 1, 2, 3 ou 6 réplicas (nada de 4 ou 5 desbalanceadas)
+      authenticationRef:
+        name: creditflow-worker-pagamentos-kafka
+---
+# Credenciais do KafkaUser creditflow-keda (Strimzi), materializadas pelo External Secrets
+# no Secret creditflow-keda-kafka com as chaves que o scaler espera.
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: creditflow-worker-pagamentos-kafka
+  namespace: creditflow
+spec:
+  secretTargetRef:
+    - { parameter: sasl,     name: creditflow-keda-kafka, key: sasl }      # scram_sha512
+    - { parameter: username, name: creditflow-keda-kafka, key: username }
+    - { parameter: password, name: creditflow-keda-kafka, key: password }
+    - { parameter: tls,      name: creditflow-keda-kafka, key: tls }       # enable
+    - { parameter: ca,       name: creditflow-keda-kafka, key: ca }

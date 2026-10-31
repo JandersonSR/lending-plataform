@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CreditFlow.Modules.Simulacao</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Infrastructure/Mongo (módulo 4) e Infrastructure/Cache (módulo 5) -->
+    <PackageReference Include="MongoDB.Driver" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" />
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\CreditFlow.BuildingBlocks\CreditFlow.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\CreditFlow.Modules.Simulacao.Contracts\CreditFlow.Modules.Simulacao.Contracts.csproj" />
+    <!-- De outro módulo, SÓ o .Contracts. O teste de arquitetura quebra se alguém trocar por CreditFlow.Modules.Clientes. -->
+    <ProjectReference Include="..\..\Clientes\CreditFlow.Modules.Clientes.Contracts\CreditFlow.Modules.Clientes.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CreditFlow.Modules.Simulacao.Tests" />
+    <InternalsVisibleTo Include="CreditFlow.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,21 @@
+apiVersion: v2
+name: creditflow
+description: >-
+  CreditFlow, monolito modular em ASP.NET 10. Um chart, uma imagem, N Deployments:
+  um por perfil de execução (api-geral, api-simulacao, api-pagamentos, worker-pagamentos).
+type: application
+# Versão do CHART (muda quando os templates mudam).
+version: 0.1.0
+# Versão da APLICAÇÃO (padrão da tag da imagem quando imagem.tag e imagem.digest estão vazios).
+appVersion: "0.1.0"
+kubeVersion: ">=1.32.0-0"
+home: https://github.com/JandersonSR/lending-plataform
+sources:
+  - https://github.com/JandersonSR/lending-plataform
+maintainers:
+  - name: JandersonSR
+    url: https://github.com/JandersonSR
+keywords:
+  - dotnet
+  - monolito-modular
+  - credito

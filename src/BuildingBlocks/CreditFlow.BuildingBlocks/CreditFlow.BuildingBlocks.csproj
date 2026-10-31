@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Blocos compartilhados por todos os módulos. Regra de ouro: só entra aqui o que é IGUAL para todos
+    e quase nunca muda (Result, Erro, Dinheiro, IModule...). Regra de negócio de um módulo nunca mora aqui.
+    Subpastas Auth/, Mensageria/ e Observabilidade/ são infraestrutura transversal (módulos 3, 6 e 12 do curso).
+  -->
+  <PropertyGroup>
+    <RootNamespace>CreditFlow.BuildingBlocks</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Biblioteca que usa tipos do ASP.NET Core (IEndpointRouteBuilder, IResult) sem ser um app web. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Auth/ (módulo 3) -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <!-- Mensageria/ (módulo 6): produtor/consumidor Kafka, outbox e inbox sobre EF Core relacional -->
+    <PackageReference Include="Confluent.Kafka" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <!-- Observabilidade/ (módulo 12) -->
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CreditFlow.ArchitectureTests" />
+    <InternalsVisibleTo Include="CreditFlow.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

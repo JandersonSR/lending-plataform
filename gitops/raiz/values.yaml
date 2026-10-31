@@ -1,0 +1,23 @@
+# Preenchido pela Application raiz criada no Terraform 30-app (helm.valuesObject).
+ambiente: dev
+repositorio: https://github.com/JandersonSR/lending-plataform.git
+revisao: main
+dominio: exemplo.com.br
+acme:
+  email: ""
+  servidor: https://acme-staging-v02.api.letsencrypt.org/directory
+azure:
+  tenantId: ""
+  keyVaultUrl: ""
+  esoClientId: ""
+  appClientId: ""
+  postgresHost: ""
+  ipPublicoNome: ""
+  grupoRecursosIp: ""
+
+versoes:
+  keycloak: 26.8.1
+  kubePrometheusStack: 92.16.1
+  loki: 7.5.0
+  tempo: 1.24.4
+  otelCollector: 0.178.1

@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CreditFlow.Modules.Propostas</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\CreditFlow.BuildingBlocks\CreditFlow.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\CreditFlow.Modules.Propostas.Contracts\CreditFlow.Modules.Propostas.Contracts.csproj" />
+    <!-- De outros módulos, SÓ os .Contracts (o teste de arquitetura confere). -->
+    <ProjectReference Include="..\..\Clientes\CreditFlow.Modules.Clientes.Contracts\CreditFlow.Modules.Clientes.Contracts.csproj" />
+    <ProjectReference Include="..\..\Simulacao\CreditFlow.Modules.Simulacao.Contracts\CreditFlow.Modules.Simulacao.Contracts.csproj" />
+    <!-- Módulo 6: os eventos DesembolsoConcluido/DesembolsoFalhou que encerram a saga. -->
+    <ProjectReference Include="..\..\Pagamentos\CreditFlow.Modules.Pagamentos.Contracts\CreditFlow.Modules.Pagamentos.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Infrastructure\Persistencia\Sql\001_schema_propostas.sql" LogicalName="propostas.001_schema_propostas.sql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CreditFlow.Modules.Propostas.Tests" />
+    <InternalsVisibleTo Include="CreditFlow.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

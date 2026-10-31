@@ -1,0 +1,11 @@
+# Cluster local de 1 control-plane + 2 workers (dá para ver o spread e o rolling update).
+# kind create cluster --name creditflow --config deploy/k8s/local/kind.yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: creditflow
+nodes:
+  - role: control-plane
+  - role: worker
+    labels: { topology.kubernetes.io/zone: zona-a }
+  - role: worker
+    labels: { topology.kubernetes.io/zone: zona-b }

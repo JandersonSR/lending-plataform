@@ -1,0 +1,16 @@
+# Laboratório (kind): banco no Postgres local, sem cofre, uma instância, dados de teste.
+hostnamePublico: http://localhost:8081
+instancias: 1
+recursos:
+  requests: { cpu: 200m, memory: 768Mi }
+  limits: { memory: 1Gi }
+banco:
+  doCofre: false
+  host: postgres.creditflow-dados.svc
+  propriedadesUrl: ""
+  bootstrap: true
+realm:
+  incluirDadosDeTeste: true
+  segredoBackofficeDoCofre: false
+gateway:
+  nome: ""

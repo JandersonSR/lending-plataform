@@ -1,0 +1,80 @@
+{{- /*
+Roteamento por caminho, a partir das "rotas" de cada perfil:
+  /v1/simulacoes -> api-simulacao, /v1/pagamentos -> api-pagamentos, / -> api-geral.
+Gateway API e Ingress escolhem a regra de PREFIXO MAIS LONGO, então "/" só pega o resto.
+*/ -}}
+{{- $regras := list }}
+{{- range $nome, $p := .Values.perfis }}
+{{- $temServico := true }}
+{{- if hasKey $p "servico" }}{{ $temServico = $p.servico }}{{ end }}
+{{- if and $p.habilitado $temServico }}
+{{- range $p.rotas }}
+{{- $regras = append $regras (dict "caminho" .caminho "servico" (include "creditflow.nomePerfil" (dict "raiz" $ "perfil" $nome "cfg" $p))) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if and $regras (eq .Values.rotas.tipo "gateway") }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "creditflow.nome" . }}
+  labels:
+    {{- include "creditflow.rotulosComuns" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ .Values.rotas.gateway.nome }}
+      namespace: {{ .Values.rotas.gateway.namespace }}
+      {{- with .Values.rotas.gateway.secao }}
+      sectionName: {{ . }}
+      {{- end }}
+  {{- with .Values.rotas.hosts }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range $regras }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ .caminho }}
+      backendRefs:
+        - name: {{ .servico }}
+          port: 80
+    {{- end }}
+{{- else if and $regras (eq .Values.rotas.tipo "ingress") }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "creditflow.nome" . }}
+  labels:
+    {{- include "creditflow.rotulosComuns" . | nindent 4 }}
+  {{- with .Values.rotas.ingress.anotacoes }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.rotas.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if .Values.rotas.ingress.tlsSecret }}
+  tls:
+    - hosts:
+        {{- toYaml .Values.rotas.hosts | nindent 8 }}
+      secretName: {{ .Values.rotas.ingress.tlsSecret }}
+  {{- end }}
+  rules:
+    {{- range $host := .Values.rotas.hosts }}
+    - host: {{ $host }}
+      http:
+        paths:
+          {{- range $regras }}
+          - path: {{ .caminho }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .servico }}
+                port:
+                  name: http
+          {{- end }}
+    {{- end }}
+{{- end }}

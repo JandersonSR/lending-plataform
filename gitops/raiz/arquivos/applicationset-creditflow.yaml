@@ -1,0 +1,63 @@
+# ApplicationSet da aplicação: UMA Application "creditflow-<ambiente>" por cluster registrado
+# com o rótulo creditflow.io/ambiente. Cada cluster (dev, prod) tem o próprio Argo CD e só
+# conhece a si mesmo, então cada um gera só a sua. Os dados da Azure vêm das anotações do
+# Secret de cluster (Terraform 30-app); a versão da imagem vem do Git
+# (gitops/ambientes/<ambiente>/creditflow.yaml, que o CI atualiza por PR).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: creditflow
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchExpressions:
+            - key: creditflow.io/ambiente
+              operator: In
+              values: [dev, prod]
+  template:
+    metadata:
+      name: 'creditflow-{{ index .metadata.labels "creditflow.io/ambiente" }}'
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: creditflow
+      source:
+        repoURL: https://github.com/JandersonSR/lending-plataform.git
+        targetRevision: main
+        path: deploy/helm/creditflow
+        helm:
+          releaseName: creditflow
+          valueFiles:
+            - '../../../gitops/ambientes/{{ index .metadata.labels "creditflow.io/ambiente" }}/creditflow.yaml'
+          parameters:
+            - name: workloadIdentity.clientId
+              value: '{{ index .metadata.annotations "creditflow.io/app-client-id" }}'
+            - name: rotas.hosts[0]
+              value: 'api.{{ index .metadata.annotations "creditflow.io/dominio" }}'
+            - name: configuracao.Auth__Authority
+              value: 'https://auth.{{ index .metadata.annotations "creditflow.io/dominio" }}/realms/creditflow'
+            - name: imagem.repositorio
+              value: '{{ index .metadata.annotations "creditflow.io/harbor-host" }}/creditflow/creditflow'
+      destination:
+        server: '{{ .server }}'
+        namespace: creditflow
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false
+        retry:
+          limit: 5
+          backoff: { duration: 10s, factor: 2, maxDuration: 3m }
+      # O HPA e o KEDA são os donos de spec.replicas (o chart nem declara): ignorar por segurança.
+      ignoreDifferences:
+        - group: apps
+          kind: Deployment
+          jsonPointers: [/spec/replicas]

@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Vitrine do módulo Simulacao: consulta síncrona (usada por Propostas) e o evento SimulacaoRealizada. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\CreditFlow.BuildingBlocks\CreditFlow.BuildingBlocks.csproj" />
+  </ItemGroup>
+
+</Project>

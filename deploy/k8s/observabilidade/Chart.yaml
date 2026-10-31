@@ -1,0 +1,9 @@
+apiVersion: v2
+name: creditflow-observabilidade
+description: >-
+  O que é do CreditFlow na pilha de observabilidade: regras de SLO (gravação e alertas de
+  queima de error budget) e dashboards do Grafana. Os componentes (kube-prometheus-stack,
+  Loki, Tempo, OpenTelemetry Collector) são charts oficiais com os valores em valores/.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

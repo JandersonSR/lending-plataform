@@ -1,0 +1,8 @@
+apiVersion: v2
+name: creditflow-keycloak
+description: >-
+  Keycloak no cluster (operador oficial, CRDs k8s.keycloak.org/v2beta1) com banco no
+  Azure Database for PostgreSQL Flexible, rota no Gateway e o realm creditflow como código.
+type: application
+version: 0.1.0
+appVersion: "26.8.1"

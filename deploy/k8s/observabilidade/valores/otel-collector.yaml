@@ -1,0 +1,77 @@
+# Chart open-telemetry/opentelemetry-collector 0.178.x. Um Deployment (gateway) que recebe OTLP
+# dos pods do CreditFlow e distribui: traces -> Tempo, logs -> Loki (OTLP nativo), métricas ->
+# endpoint Prometheus raspado pelo kube-prometheus-stack (ServiceMonitor).
+mode: deployment
+replicaCount: 2
+fullnameOverride: otel-collector
+image:
+  repository: otel/opentelemetry-collector-contrib
+command:
+  name: otelcol-contrib
+presets:
+  # Acrescenta k8s.pod.uid, k8s.deployment.name... a partir do IP de origem (precisa de RBAC; o chart cria).
+  kubernetesAttributes:
+    enabled: true
+resources:
+  requests: { cpu: 200m, memory: 256Mi }
+  limits: { memory: 512Mi }
+ports:
+  prom:
+    enabled: true
+    containerPort: 8889
+    servicePort: 8889
+    protocol: TCP
+serviceMonitor:
+  enabled: true
+  metricsEndpoints:
+    - port: prom
+      interval: 15s
+  extraLabels:
+    release: kube-prometheus-stack
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc: { endpoint: "0.0.0.0:4317" }
+        http: { endpoint: "0.0.0.0:4318" }
+  processors:
+    # Protege o coletor: acima do limite ele recusa dados (o SDK tenta de novo) em vez de morrer por OOM.
+    memory_limiter:
+      check_interval: 1s
+      limit_percentage: 80
+      spike_limit_percentage: 20
+    batch:
+      send_batch_size: 8192
+      timeout: 5s
+    # Traces de health check não interessam (a aplicação já filtra; isto é a rede de segurança).
+    filter/sem-health:
+      error_mode: ignore
+      traces:
+        span:
+          - 'IsMatch(attributes["url.path"], "^/healthz")'
+  exporters:
+    otlp/tempo:
+      endpoint: tempo.observabilidade.svc:4317
+      tls: { insecure: true }
+    otlphttp/loki:
+      endpoint: http://loki.observabilidade.svc:3100/otlp
+    prometheus:
+      endpoint: "0.0.0.0:8889"
+      # Atributos de recurso (service.name, k8s.pod.name...) viram rótulos: as regras de SLO usam service_name.
+      resource_to_telemetry_conversion:
+        enabled: true
+      enable_open_metrics: true
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, filter/sem-health, k8sattributes, batch]
+        exporters: [otlp/tempo]
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, k8sattributes, batch]
+        exporters: [prometheus]
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, k8sattributes, batch]
+        exporters: [otlphttp/loki]

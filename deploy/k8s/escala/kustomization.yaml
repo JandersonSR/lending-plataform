@@ -1,0 +1,12 @@
+# Escala "sem Helm": para o lab no kind (lição 8.4/8.5) sobre Deployments já existentes.
+#   kubectl apply -k deploy/k8s/escala
+# Em dev/prod quem declara tudo isto é o chart (deploy/helm/creditflow). Não aplique os dois.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: creditflow
+resources:
+  - hpa-api-simulacao.yaml
+  - keda-worker-pagamentos.yaml
+  - pdb.yaml
+patches:
+  - path: topology-spread-patch.yaml

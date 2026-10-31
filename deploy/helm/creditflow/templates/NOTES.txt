@@ -1,0 +1,14 @@
+CreditFlow {{ .Chart.AppVersion }} (release {{ .Release.Name }}, namespace {{ .Release.Namespace }})
+Imagem: {{ include "creditflow.imagem" . }}
+
+Perfis habilitados:
+{{- range $nome, $p := .Values.perfis }}
+{{- if $p.habilitado }}
+  - {{ $nome }}: papel={{ $p.papel }} módulos={{ include "creditflow.modulos" $p.modulos }}{{ if $p.autoescala }} escala={{ $p.autoescala.tipo }}{{ end }}
+{{- end }}
+{{- end }}
+
+Ver o rollout:
+  kubectl -n {{ .Release.Namespace }} get deploy,pods -l app.kubernetes.io/instance={{ .Release.Name }}
+Log da migração:
+  kubectl -n {{ .Release.Namespace }} logs job/{{ include "creditflow.nome" . }}-migracoes --all-containers

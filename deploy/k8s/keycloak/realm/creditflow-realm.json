@@ -1,0 +1,240 @@
+{
+  "realm": "creditflow",
+  "displayName": "CreditFlow",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "rememberMe": false,
+  "verifyEmail": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "maxDeltaTimeSeconds": 43200,
+  "defaultSignatureAlgorithm": "RS256",
+  "accessTokenLifespan": 300,
+  "accessTokenLifespanForImplicitFlow": 300,
+  "accessCodeLifespan": 60,
+  "accessCodeLifespanLogin": 1800,
+  "accessCodeLifespanUserAction": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "clientSessionIdleTimeout": 0,
+  "clientSessionMaxLifespan": 0,
+  "offlineSessionIdleTimeout": 2592000,
+  "offlineSessionMaxLifespanEnabled": true,
+  "offlineSessionMaxLifespan": 5184000,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "passwordPolicy": "length(8) and notUsername",
+  "internationalizationEnabled": true,
+  "supportedLocales": ["pt-BR", "en"],
+  "defaultLocale": "pt-BR",
+  "eventsEnabled": true,
+  "eventsExpiration": 86400,
+  "enabledEventTypes": ["LOGIN", "LOGIN_ERROR", "CODE_TO_TOKEN", "CODE_TO_TOKEN_ERROR", "CLIENT_LOGIN", "CLIENT_LOGIN_ERROR", "REFRESH_TOKEN", "REFRESH_TOKEN_ERROR", "LOGOUT"],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+  "roles": {
+    "realm": [
+      { "name": "cliente", "description": "Pessoa que simula, pede e acompanha a propria proposta" },
+      { "name": "analista", "description": "Analisa propostas pendentes: aprova ou recusa" },
+      { "name": "operador-financeiro", "description": "Opera desembolsos e baixas de parcela (inclui o backoffice M2M)" },
+      { "name": "admin", "description": "Administracao da plataforma CreditFlow (nao e admin do Keycloak)" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "creditflow-api",
+      "name": "CreditFlow API (audience)",
+      "description": "Representa a API. Nao faz login de ninguem: existe para ser o 'aud' dos tokens e para a introspeccao.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "attributes": {
+        "oauth2.device.authorization.grant.enabled": "false",
+        "oidc.ciba.grant.enabled": "false"
+      }
+    },
+    {
+      "clientId": "creditflow-web",
+      "name": "CreditFlow Web (SPA)",
+      "description": "Front-end no navegador. Cliente publico: nao guarda segredo, usa Authorization Code + PKCE (S256).",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": true,
+      "rootUrl": "http://localhost:5173",
+      "baseUrl": "/",
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://localhost:8080/scalar/*"
+      ],
+      "webOrigins": ["+"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*",
+        "oauth2.device.authorization.grant.enabled": "false",
+        "oidc.ciba.grant.enabled": "false",
+        "use.refresh.tokens": "true",
+        "client.session.idle.timeout": "1800"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-creditflow-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "creditflow-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "creditflow-backoffice",
+      "name": "CreditFlow Backoffice (M2M)",
+      "description": "Processos de servidor (conciliacao, jobs). Confidencial, so client credentials. Recebe o papel operador-financeiro pela conta de servico.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "backoffice-segredo-so-para-dev-local",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "attributes": {
+        "access.token.lifespan": "300",
+        "client_credentials.use_refresh_token": "false",
+        "oauth2.device.authorization.grant.enabled": "false",
+        "oidc.ciba.grant.enabled": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-creditflow-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "creditflow-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "creditflow-testes",
+      "name": "CreditFlow testes (SO LOCAL)",
+      "description": "Existe so neste realm de desenvolvimento, para testes de integracao e curl obterem token de usuario sem navegador (password grant). Nunca leve para homologacao ou producao.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "testes-segredo-so-para-dev-local",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "attributes": {
+        "oauth2.device.authorization.grant.enabled": "false",
+        "oidc.ciba.grant.enabled": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-creditflow-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "creditflow-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "ana.cliente",
+      "email": "ana.cliente@creditflow.local",
+      "firstName": "Ana",
+      "lastName": "Cliente",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "Senha@123", "temporary": false }],
+      "realmRoles": ["cliente"]
+    },
+    {
+      "username": "bruno.cliente",
+      "email": "bruno.cliente@creditflow.local",
+      "firstName": "Bruno",
+      "lastName": "Cliente",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "Senha@123", "temporary": false }],
+      "realmRoles": ["cliente"]
+    },
+    {
+      "username": "carla.analista",
+      "email": "carla.analista@creditflow.local",
+      "firstName": "Carla",
+      "lastName": "Analista",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "Senha@123", "temporary": false }],
+      "realmRoles": ["analista"]
+    },
+    {
+      "username": "otavio.operador",
+      "email": "otavio.operador@creditflow.local",
+      "firstName": "Otavio",
+      "lastName": "Operador",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "Senha@123", "temporary": false }],
+      "realmRoles": ["operador-financeiro"]
+    },
+    {
+      "username": "alice.admin",
+      "email": "alice.admin@creditflow.local",
+      "firstName": "Alice",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "Senha@123", "temporary": false }],
+      "realmRoles": ["admin", "analista"]
+    },
+    {
+      "username": "service-account-creditflow-backoffice",
+      "enabled": true,
+      "serviceAccountClientId": "creditflow-backoffice",
+      "realmRoles": ["operador-financeiro"]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+instancias: 1
+recursos:
+  requests: { cpu: 250m, memory: 768Mi }
+  limits: { memory: 1Gi }
+realm:
+  incluirDadosDeTeste: true

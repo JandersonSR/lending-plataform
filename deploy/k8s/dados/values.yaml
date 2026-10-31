@@ -1,0 +1,64 @@
+# Padrão = produção. O ambiente dev sobrescreve em gitops/ambientes/dev/dados.yaml.
+kafka:
+  nome: creditflow
+  versao: 4.3.1
+  metadataVersion: 4.3-IV0
+  # Pools de nós (KRaft): quem é controlador (quórum de metadados) e quem é broker.
+  pools:
+    - nome: controladores
+      papeis: [controller]
+      replicas: 3
+      disco: 10Gi
+      recursos:
+        requests: { cpu: 200m, memory: 1Gi }
+        limits: { memory: 1Gi }
+    - nome: brokers
+      papeis: [broker]
+      replicas: 3
+      disco: 100Gi
+      recursos:
+        requests: { cpu: 500m, memory: 4Gi }
+        limits: { memory: 4Gi }
+  classeDeDisco: managed-csi-premium
+  # Espalha réplicas de partição por zona (o Strimzi lê o rótulo do nó).
+  rackPorZona: true
+  replicacao: 3
+  minInsync: 2
+  # Listener sem TLS nem autenticação: SÓ para o laboratório local.
+  listenerPlano: false
+
+topicos:
+  particoes: 6
+  retencaoMs: 604800000          # 7 dias (a inbox guarda 14)
+  principais:
+    - creditflow.propostas.v1
+    - creditflow.pagamentos.v1
+    - creditflow.simulacoes.v1
+  dlt:
+    particoes: 1
+    retencaoMs: 2592000000       # 30 dias
+    nomes:
+      - creditflow-pagamentos.dlt
+      - creditflow-propostas.dlt
+      - creditflow-notificacoes.dlt
+
+# Um KafkaUser por perfil: cada processo só lê/escreve o que precisa (menor privilégio).
+usuarios:
+  habilitado: true
+
+dragonfly:
+  nome: creditflow-cache
+  replicas: 2
+  imagem: ""   # vazio = a versão que o operador escolhe
+  memoriaMaxima: 1gb
+  recursos:
+    requests: { cpu: 250m, memory: 1280Mi }
+    limits: { memory: 1280Mi }
+  # Senha vinda do Key Vault (ESO). false = sem senha (laboratório local).
+  senhaDoCofre: true
+
+# SecretStore no namespace creditflow que lê, do namespace creditflow-dados, os Secrets que o
+# Strimzi cria para cada KafkaUser e a CA do cluster. É o que o chart do CreditFlow usa (loja "kafka").
+lojaKafka:
+  habilitado: true
+  namespaceApp: creditflow

@@ -1,0 +1,17 @@
+{{- /*
+Dashboards como código: o sidecar do Grafana (kube-prometheus-stack) carrega todo ConfigMap
+com o rótulo grafana_dashboard=1, de qualquer namespace (grafana.sidecar.dashboards.searchNamespace).
+Editar no Grafana não persiste: exporte o JSON e faça PR.
+*/ -}}
+{{- range $caminho, $_ := .Files.Glob "dashboards/*.json" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-{{ base $caminho | trimSuffix ".json" }}
+  labels:
+    grafana_dashboard: "1"
+data:
+  {{ base $caminho }}: |-
+    {{- $.Files.Get $caminho | nindent 4 }}
+---
+{{- end }}

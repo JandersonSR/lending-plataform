@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A "vitrine" do módulo Clientes: a ÚNICA coisa que outros módulos podem referenciar.
+    Interfaces de consulta e DTOs. Nada de entidade, DbContext ou regra.
+    Referencia só o BuildingBlocks; nunca o projeto do próprio módulo (a seta é módulo → Contracts).
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\CreditFlow.BuildingBlocks\CreditFlow.BuildingBlocks.csproj" />
+  </ItemGroup>
+
+</Project>

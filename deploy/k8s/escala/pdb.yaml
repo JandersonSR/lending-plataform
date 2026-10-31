@@ -1,0 +1,30 @@
+# PodDisruptionBudgets: protegem contra interrupções VOLUNTÁRIAS (dreno de nó numa atualização do AKS,
+# kubectl drain, o cluster autoscaler removendo um nó). Não protegem contra o nó morrer.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: creditflow-api-simulacao
+  namespace: creditflow
+spec:
+  minAvailable: 1     # com HPA min 2, sempre dá para tirar 1: o dreno nunca trava
+  unhealthyPodEvictionPolicy: AlwaysAllow   # pod que nem ficou pronto não segura a manutenção
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: creditflow
+      app.kubernetes.io/component: api-simulacao
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: creditflow-worker-pagamentos
+  namespace: creditflow
+spec:
+  # maxUnavailable, e não minAvailable: o worker pode ter 1 réplica (KEDA min 1). minAvailable: 1
+  # com 1 réplica travaria o dreno para sempre. Tirar o único worker por segundos é aceitável:
+  # o lag acumula no tópico e é drenado quando o pod volta (nada se perde, lição 6.4).
+  maxUnavailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: creditflow
+      app.kubernetes.io/component: worker-pagamentos

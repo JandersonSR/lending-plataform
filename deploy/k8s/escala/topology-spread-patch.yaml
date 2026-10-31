@@ -1,0 +1,50 @@
+# Patch (kustomize, strategic merge) com o espalhamento das réplicas. O chart já gera isto no
+# Deployment; aqui está isolado para estudo e para aplicar num Deployment sem Helm.
+# zone: a queda de uma zona do AKS não leva todas as réplicas. hostname: nem a de um nó.
+# ScheduleAnyway (preferência) e não DoNotSchedule (regra): num cluster de 1 zona ou com nós
+# cheios, a regra deixaria pods Pending justamente no pico.
+# matchLabelKeys [pod-template-hash]: conta só os pods da MESMA versão do ReplicaSet, senão
+# durante um rolling update os pods velhos distorcem a conta.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: creditflow-api-simulacao
+  namespace: creditflow
+spec:
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: creditflow
+              app.kubernetes.io/component: api-simulacao
+          matchLabelKeys: [pod-template-hash]
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: creditflow
+              app.kubernetes.io/component: api-simulacao
+          matchLabelKeys: [pod-template-hash]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: creditflow-worker-pagamentos
+  namespace: creditflow
+spec:
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: creditflow
+              app.kubernetes.io/component: worker-pagamentos
+          matchLabelKeys: [pod-template-hash]

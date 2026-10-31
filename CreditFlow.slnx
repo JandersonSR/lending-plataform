@@ -1,0 +1,47 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Host/">
+    <Project Path="src/Host/CreditFlow.Host/CreditFlow.Host.csproj" />
+  </Folder>
+  <Folder Name="/src/BuildingBlocks/">
+    <Project Path="src/BuildingBlocks/CreditFlow.BuildingBlocks/CreditFlow.BuildingBlocks.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/" />
+  <Folder Name="/src/Modules/Clientes/">
+    <Project Path="src/Modules/Clientes/CreditFlow.Modules.Clientes/CreditFlow.Modules.Clientes.csproj" />
+    <Project Path="src/Modules/Clientes/CreditFlow.Modules.Clientes.Contracts/CreditFlow.Modules.Clientes.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Simulacao/">
+    <Project Path="src/Modules/Simulacao/CreditFlow.Modules.Simulacao/CreditFlow.Modules.Simulacao.csproj" />
+    <Project Path="src/Modules/Simulacao/CreditFlow.Modules.Simulacao.Contracts/CreditFlow.Modules.Simulacao.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Propostas/">
+    <Project Path="src/Modules/Propostas/CreditFlow.Modules.Propostas/CreditFlow.Modules.Propostas.csproj" />
+    <Project Path="src/Modules/Propostas/CreditFlow.Modules.Propostas.Contracts/CreditFlow.Modules.Propostas.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Pagamentos/">
+    <Project Path="src/Modules/Pagamentos/CreditFlow.Modules.Pagamentos/CreditFlow.Modules.Pagamentos.csproj" />
+    <Project Path="src/Modules/Pagamentos/CreditFlow.Modules.Pagamentos.Contracts/CreditFlow.Modules.Pagamentos.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Notificacoes/">
+    <Project Path="src/Modules/Notificacoes/CreditFlow.Modules.Notificacoes/CreditFlow.Modules.Notificacoes.csproj" />
+    <Project Path="src/Modules/Notificacoes/CreditFlow.Modules.Notificacoes.Contracts/CreditFlow.Modules.Notificacoes.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CreditFlow.ArchitectureTests/CreditFlow.ArchitectureTests.csproj" />
+    <Project Path="tests/CreditFlow.Modules.Clientes.Tests/CreditFlow.Modules.Clientes.Tests.csproj" />
+    <Project Path="tests/CreditFlow.Modules.Simulacao.Tests/CreditFlow.Modules.Simulacao.Tests.csproj" />
+    <Project Path="tests/CreditFlow.Modules.Pagamentos.Tests/CreditFlow.Modules.Pagamentos.Tests.csproj" />
+    <Project Path="tests/CreditFlow.Modules.Propostas.Tests/CreditFlow.Modules.Propostas.Tests.csproj" />
+    <Project Path="tests/CreditFlow.IntegrationTests/CreditFlow.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/deploy/">
+    <File Path="deploy/local/docker-compose.yml" />
+  </Folder>
+  <Folder Name="/solution-items/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path=".editorconfig" />
+    <File Path="README.md" />
+  </Folder>
+</Solution>

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CreditFlow.Modules.Pagamentos</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\CreditFlow.BuildingBlocks\CreditFlow.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\CreditFlow.Modules.Pagamentos.Contracts\CreditFlow.Modules.Pagamentos.Contracts.csproj" />
+    <!-- Só o Contracts de Propostas (o evento ContratoAssinado), nunca o módulo: NetArchTest confere. -->
+    <ProjectReference Include="..\..\Propostas\CreditFlow.Modules.Propostas.Contracts\CreditFlow.Modules.Propostas.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Infrastructure\Persistencia\Sql\001_schema_pagamentos.sql" LogicalName="pagamentos.001_schema_pagamentos.sql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CreditFlow.Modules.Pagamentos.Tests" />
+    <InternalsVisibleTo Include="CreditFlow.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

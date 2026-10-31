@@ -1,0 +1,152 @@
+{{- /*
+Migrações como Job em hook pre-install/pre-upgrade (o Argo CD traduz para PreSync).
+Ordem dentro do hook (helm.sh/hook-weight, do menor para o maior):
+  -20  Secret/ExternalSecret com a credencial de DDL + ConfigMap com o SQL de papéis
+  -10  Job (psql): aplica o DDL de cada módulo (sql/<modulo>.NNN_*.sql, cópias geradas por
+       deploy/scripts/copiar-artefatos.sh a partir das pastas Sql dos módulos) e depois o papeis.sql
+A versão nova da aplicação só sobe se o Job terminar com sucesso.
+Regra que torna isso seguro: migração sempre compatível com a versão ANTERIOR do código
+(expandir antes, contrair depois), porque o rollback volta o código, não o schema (lição 7.4).
+*/ -}}
+{{- if .Values.migracoes.habilitado }}
+{{- $m := .Values.migracoes }}
+{{- $nome := printf "%s-migracoes" (include "creditflow.nome" .) }}
+{{- $nomeSecret := include "creditflow.nomeSegredo" (dict "raiz" $ "item" "migracoes") }}
+{{- if .Values.segredos.habilitado }}
+{{ include "creditflow.externalSecret" (dict "raiz" $ "item" "migracoes" "def" .Values.segredos.itens.migracoes "nome" $nomeSecret "hook" true) }}
+{{- else }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $nomeSecret }}
+  labels:
+    {{- include "creditflow.rotulosComuns" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-20"
+    helm.sh/hook-delete-policy: before-hook-creation
+type: Opaque
+stringData:
+  {{- range $k, $v := (required "segredosLocais.migracoes é obrigatório com segredos.habilitado=false" .Values.segredosLocais.migracoes) }}
+  {{ $k }}: {{ $v | toString | quote }}
+  {{- end }}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $nome }}-sql
+  labels:
+    {{- include "creditflow.rotulosComuns" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-20"
+    helm.sh/hook-delete-policy: before-hook-creation
+data:
+  {{- range $caminho, $_ := .Files.Glob "sql/*.sql" }}
+  {{ base $caminho }}: |-
+    {{- $.Files.Get $caminho | nindent 4 }}
+  {{- end }}
+  papeis.sql: |
+    -- Idempotente: roda em todo deploy. Variáveis do psql: :senha_app e :admin.
+    -- 1) Papel da aplicação: só DML. Criado uma vez; a senha é reaplicada (rotação).
+    SELECT format('CREATE ROLE creditflow_app LOGIN PASSWORD %L', :'senha_app')
+     WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'creditflow_app') \gexec
+    ALTER ROLE creditflow_app PASSWORD :'senha_app';
+    GRANT CONNECT ON DATABASE creditflow TO creditflow_app;
+
+    -- 2) Privilégios PADRÃO: valem para schemas, tabelas e sequências que o usuário de
+    --    migração criar DEPOIS deste comando (as migrações do EF Core).
+    ALTER DEFAULT PRIVILEGES FOR ROLE :"admin" GRANT USAGE ON SCHEMAS TO creditflow_app;
+    ALTER DEFAULT PRIVILEGES FOR ROLE :"admin" GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO creditflow_app;
+    ALTER DEFAULT PRIVILEGES FOR ROLE :"admin" GRANT USAGE, SELECT ON SEQUENCES TO creditflow_app;
+
+    -- 3) O que já existe (deploys anteriores): concede explicitamente.
+    SELECT format('GRANT USAGE ON SCHEMA %1$I TO creditflow_app; '
+               || 'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA %1$I TO creditflow_app; '
+               || 'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA %1$I TO creditflow_app;', nspname)
+      FROM pg_namespace
+     WHERE nspname IN ('clientes', 'propostas', 'pagamentos') \gexec
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $nome }}
+  labels:
+    {{- include "creditflow.rotulosComuns" . | nindent 4 }}
+    app.kubernetes.io/component: migracoes
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    # Sem hook-succeeded: o Job (e o log) fica até o próximo deploy, para diagnóstico.
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: {{ $m.backoffLimit }}
+  # Prazo total: uma migração que trava (lock esperando) falha aqui em vez de segurar o deploy para sempre.
+  activeDeadlineSeconds: {{ $m.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: creditflow
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: migracoes
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      {{- with .Values.imagem.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrar
+          image: {{ $m.imagemPsql }}
+          command: ["sh", "-c"]
+          # -1: cada arquivo numa transação (tudo ou nada). ON_ERROR_STOP: o primeiro erro para o Job.
+          # O DDL dos módulos é idempotente (IF NOT EXISTS): roda em todo deploy.
+          args:
+            - |
+              set -e
+              for f in /sql/*.sql; do
+                case "$(basename "$f")" in papeis.sql) continue ;; esac
+                echo ">> $(basename "$f")"
+                psql -v ON_ERROR_STOP=1 -1 -f "$f"
+              done
+              {{- if $m.papeis.habilitado }}
+              echo ">> papeis.sql"
+              psql -v ON_ERROR_STOP=1 -v senha_app="$SENHA_APP" -v admin="$PGUSER" -f /sql/papeis.sql
+              {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ $nomeSecret }}
+          env:
+            - name: HOME
+              value: /tmp
+            # Um lock esperando mais de 30 s falha o comando em vez de pendurar o deploy (lição 7.4).
+            - name: PGOPTIONS
+              value: "-c lock_timeout=30s -c statement_timeout=300s"
+          resources:
+            {{- toYaml $m.recursos | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: sql
+              mountPath: /sql
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: sql
+          configMap:
+            name: {{ $nome }}-sql
+{{- end }}

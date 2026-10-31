@@ -1,0 +1,4 @@
+# Exceções do scan do Trivy. Cada linha: o CVE, POR QUE é aceito, quem aceitou e ATÉ QUANDO.
+# Exceção sem data vira permanente sem ninguém perceber (lição 10.1).
+# Exemplo:
+# CVE-2026-00000 # sem caminho de exploração: a função vulnerável não é usada; JandersonSR; revisar em 2026-12-31

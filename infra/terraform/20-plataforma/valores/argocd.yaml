@@ -1,0 +1,40 @@
+# Chart argo/argo-cd 10.x (Argo CD 3.5). Sem Ingress e sem SSO: acesso por port-forward
+# (kubectl -n argocd port-forward svc/argocd-server 8443:443). A UI pode sincronizar e
+# apagar recursos: não a exponha na internet sem SSO.
+configs:
+  # Desde o Argo CD 3.0 o rastreamento de recursos é por ANOTAÇÃO (argocd.argoproj.io/tracking-id),
+  # não pelo rótulo app.kubernetes.io/instance que os charts já usam: nada a configurar.
+  cm:
+    # Saúde de Application RESTAURADA. Sem isto, o app-of-apps não espera um filho ficar
+    # Healthy antes de passar para a próxima onda (a verificação foi removida no Argo CD 1.8).
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil then
+        if obj.status.health ~= nil then
+          hs.status = obj.status.health.status
+          if obj.status.health.message ~= nil then
+            hs.message = obj.status.health.message
+          end
+        end
+      end
+      return hs
+    # Campos que outros controladores mudam de propósito: não são drift.
+    resource.customizations.ignoreDifferences.admissionregistration.k8s.io_MutatingWebhookConfiguration: |
+      jqPathExpressions:
+        - '.webhooks[]?.clientConfig.caBundle'
+    resource.customizations.ignoreDifferences.admissionregistration.k8s.io_ValidatingWebhookConfiguration: |
+      jqPathExpressions:
+        - '.webhooks[]?.clientConfig.caBundle'
+controller:
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+repoServer:
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+server:
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+dex:
+  enabled: false

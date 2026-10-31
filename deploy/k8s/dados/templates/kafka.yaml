@@ -1,0 +1,79 @@
+{{- /*
+Kafka no modo KRaft (sem ZooKeeper, removido no Kafka 4 e no Strimzi 1.x), API kafka.strimzi.io/v1.
+Os KafkaNodePools dizem quantos nós e com que papel; o recurso Kafka diz versão, listeners,
+autorização e configuração do broker. Lição 7.5.
+*/ -}}
+{{- $k := .Values.kafka }}
+{{- range $k.pools }}
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: {{ .nome }}
+  labels:
+    strimzi.io/cluster: {{ $k.nome }}
+spec:
+  replicas: {{ .replicas }}
+  roles:
+    {{- toYaml .papeis | nindent 4 }}
+  resources:
+    {{- toYaml .recursos | nindent 4 }}
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: {{ .disco }}
+        {{- with $k.classeDeDisco }}
+        class: {{ . }}
+        {{- end }}
+        # O log de metadados do KRaft mora no mesmo volume dos dados.
+        kraftMetadata: shared
+        deleteClaim: false
+---
+{{- end }}
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: {{ $k.nome }}
+spec:
+  kafka:
+    version: {{ $k.versao }}
+    metadataVersion: {{ $k.metadataVersion }}
+    {{- if $k.rackPorZona }}
+    rack:
+      topologyKey: topology.kubernetes.io/zone
+    {{- end }}
+    listeners:
+      # Listener da aplicação: TLS + SCRAM-SHA-512 (usuário e senha que o User Operator gera).
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
+        authentication:
+          type: scram-sha-512
+      {{- if $k.listenerPlano }}
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      {{- end }}
+    {{- if not $k.listenerPlano }}
+    authorization:
+      type: simple
+    {{- end }}
+    config:
+      auto.create.topics.enable: false
+      offsets.topic.replication.factor: {{ $k.replicacao }}
+      transaction.state.log.replication.factor: {{ $k.replicacao }}
+      transaction.state.log.min.isr: {{ $k.minInsync }}
+      default.replication.factor: {{ $k.replicacao }}
+      min.insync.replicas: {{ $k.minInsync }}
+  # Exportador de lag por grupo/tópico/partição (métrica kafka_consumergroup_lag): base dos
+  # alertas de lag e do runbook kafka-lag.md. O KEDA lê o lag direto do Kafka, não daqui.
+  kafkaExporter:
+    topicRegex: "creditflow.*"
+    groupRegex: "creditflow-.*"
+  entityOperator:
+    # Topic Operator: KafkaTopic (YAML) -> tópico no Kafka. User Operator: KafkaUser -> usuário + ACL + Secret.
+    topicOperator: {}
+    userOperator: {}

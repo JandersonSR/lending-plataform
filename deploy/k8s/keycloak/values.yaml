@@ -1,0 +1,35 @@
+dominio: exemplo.com.br
+subdominio: auth
+# Vazio = https://<subdominio>.<dominio>. No laboratório local: http://localhost:8081
+hostnamePublico: ""
+instancias: 2
+recursos:
+  requests: { cpu: 500m, memory: 1Gi }
+  limits: { memory: 1536Mi }
+
+banco:
+  # Segredos no Key Vault (Terraform 10-azure): host, usuário/senha admin (bootstrap) e senha do keycloak.
+  doCofre: true
+  # FQDN do Postgres Flexible (anotação postgres_host do Secret de cluster). O CR do Keycloak
+  # precisa do host literal: ele não lê o host de um Secret.
+  host: ""
+  # Cria o papel e dá posse do banco ao keycloak antes do Keycloak subir (hook PreSync do Argo CD).
+  bootstrap: true
+  nome: keycloak
+  usuario: keycloak
+  # Parâmetros JDBC: o Postgres Flexible exige TLS (require_secure_transport=on).
+  propriedadesUrl: "?sslmode=require"
+
+realm:
+  importar: true
+  # Usuários de teste (ana.cliente, carla.analista...) e o client creditflow-testes: só em dev.
+  incluirDadosDeTeste: false
+  # URIs do SPA (Authorization Code + PKCE) além das de localhost do arquivo.
+  redirectUrisWeb: []
+  # O segredo do client confidencial vem do cofre (placeholder do KeycloakRealmImport).
+  segredoBackofficeDoCofre: true
+
+gateway:
+  nome: publico
+  namespace: gateway
+  secao: https-auth

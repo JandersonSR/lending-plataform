@@ -1,0 +1,41 @@
+# MongoDB descartável para o laboratório. Na Azure o CreditFlow usa o Azure DocumentDB
+# (antigo Cosmos DB for MongoDB vCore): ver docs/adr/0010-mongodb-na-azure.md.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongo
+  namespace: creditflow-dados
+spec:
+  serviceName: mongo
+  replicas: 1
+  selector:
+    matchLabels: { app: mongo }
+  template:
+    metadata:
+      labels: { app: mongo }
+    spec:
+      containers:
+        - name: mongo
+          image: docker.io/library/mongo:8.0
+          ports: [{ name: mongo, containerPort: 27017 }]
+          readinessProbe:
+            exec: { command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"] }
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 768Mi }
+          volumeMounts:
+            - { name: dados, mountPath: /data/db }
+      volumes:
+        - name: dados
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo
+  namespace: creditflow-dados
+spec:
+  selector: { app: mongo }
+  ports: [{ name: mongo, port: 27017, targetPort: mongo }]

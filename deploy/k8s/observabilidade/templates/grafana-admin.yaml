@@ -1,0 +1,21 @@
+{{- /* Senha do admin do Grafana, do Key Vault (o kube-prometheus-stack lê grafana-admin). */ -}}
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: grafana-admin
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: azure-kv
+  target:
+    name: grafana-admin
+    creationPolicy: Owner
+    template:
+      engineVersion: v2
+      data:
+        usuario: admin
+        senha: "{{ "{{" }} .senha {{ "}}" }}"
+  data:
+    - secretKey: senha
+      remoteRef: { key: grafana-admin-senha }

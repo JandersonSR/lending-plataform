@@ -1,0 +1,88 @@
+{{- /*
+Antes do Keycloak subir: cria o papel "keycloak" e passa a posse do banco "keycloak"
+(o banco em si é criado pelo Terraform 10-azure). Idempotente.
+É um hook "Sync" do Argo CD na onda -1: roda DEPOIS do ExternalSecret (onda -2) estar
+saudável e ANTES do CR Keycloak (onda 0). Um hook PreSync rodaria antes do ExternalSecret
+existir no primeiro sync e ficaria preso esperando o Secret.
+*/ -}}
+{{- if .Values.banco.bootstrap }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-banco-bootstrap
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+data:
+  bootstrap.sql: |
+    SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'usuario', :'senha')
+     WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'usuario') \gexec
+    ALTER ROLE :"usuario" PASSWORD :'senha';
+    -- No Flexible Server o admin não é superusuário: para transferir a posse ele
+    -- precisa ser membro do papel de destino.
+    GRANT :"usuario" TO CURRENT_USER;
+    ALTER DATABASE :"banco" OWNER TO :"usuario";
+    GRANT ALL ON SCHEMA public TO :"usuario";
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-banco-bootstrap
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: psql
+          image: docker.io/library/postgres:17-alpine
+          command: ["sh", "-c"]
+          args:
+            - >-
+              PGHOST="$HOST" PGUSER="$ADMIN_USUARIO" PGPASSWORD="$ADMIN_SENHA"
+              psql -v ON_ERROR_STOP=1 -d postgres
+              -v usuario="$USUARIO" -v senha="$SENHA" -v banco={{ .Values.banco.nome }}
+              -f /sql/bootstrap.sql
+          env:
+            - name: HOME
+              value: /tmp
+            - name: PGSSLMODE
+              value: {{ if .Values.banco.doCofre }}require{{ else }}disable{{ end }}
+            - name: HOST
+              valueFrom: { secretKeyRef: { name: keycloak-banco, key: host } }
+            - name: USUARIO
+              valueFrom: { secretKeyRef: { name: keycloak-banco, key: username } }
+            - name: SENHA
+              valueFrom: { secretKeyRef: { name: keycloak-banco, key: password } }
+            - name: ADMIN_USUARIO
+              valueFrom: { secretKeyRef: { name: keycloak-banco, key: adminUsuario } }
+            - name: ADMIN_SENHA
+              valueFrom: { secretKeyRef: { name: keycloak-banco, key: adminSenha } }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 128Mi }
+          volumeMounts:
+            - { name: sql, mountPath: /sql }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: sql
+          configMap:
+            name: keycloak-banco-bootstrap
+        - name: tmp
+          emptyDir: {}
+{{- end }}

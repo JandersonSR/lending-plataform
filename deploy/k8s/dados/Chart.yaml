@@ -1,0 +1,8 @@
+apiVersion: v2
+name: creditflow-dados
+description: >-
+  Dados que rodam no cluster, como recursos dos operadores instalados pelo Terraform:
+  Kafka (Strimzi, KRaft com KafkaNodePool), tópicos e usuários com ACL, e o Dragonfly (cache).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

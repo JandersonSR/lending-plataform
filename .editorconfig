@@ -1,0 +1,43 @@
+# EditorConfig: o mesmo estilo em qualquer editor (VS, Rider, VS Code). https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml,xml,csproj,props,targets,slnx,tf,tfvars,hcl}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+# namespaces "de arquivo" (namespace X;) em vez de chaves: um nível de indentação a menos
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_prefer_primary_constructors = true:suggestion
+csharp_using_directive_placement = outside_namespace:warning
+dotnet_sort_system_directives_first = true
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_readonly_field = true:warning
+
+# nomes: interfaces começam com I, privados com _camelCase não são exigidos (usamos primary constructors)
+dotnet_naming_rule.interfaces_com_i.severity = warning
+dotnet_naming_rule.interfaces_com_i.symbols = interfaces
+dotnet_naming_rule.interfaces_com_i.style = prefixo_i
+dotnet_naming_symbols.interfaces.applicable_kinds = interface
+dotnet_naming_style.prefixo_i.required_prefix = I
+dotnet_naming_style.prefixo_i.capitalization = pascal_case
+
+# dinheiro: nunca double/float para valor monetário (regra de revisão, não do compilador)
+
+[tests/**.cs]
+# nomes de teste com "_" (Deve_recusar_valor_abaixo_do_minimo) são convenção
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.IDE1006.severity = none

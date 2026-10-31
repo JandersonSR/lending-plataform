@@ -1,0 +1,47 @@
+# HPA da api-simulacao: escala por CPU porque a simulação é CPU-bound (Price/SAC, IOF, CET por IRR).
+# Mesmos valores do chart (deploy/helm/creditflow, perfis.api-simulacao.autoescala). Este arquivo é a versão
+# "desenrolada" para estudo e para clusters sem Helm (kind no lab). NUNCA aplique este e o chart juntos:
+# dois HPAs no mesmo Deployment brigam pelo campo replicas.
+#
+# Conta do HPA (lição 8.4):  desejadas = ceil( atuais × utilizaçãoMédia / alvo )
+#   ex.: 2 pods a 150% do request (750m de 500m) com alvo 60%  →  ceil(2 × 150 / 60) = 5 pods
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: creditflow-api-simulacao
+  namespace: creditflow
+  labels:
+    app.kubernetes.io/name: creditflow
+    app.kubernetes.io/component: api-simulacao
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: creditflow-api-simulacao
+  minReplicas: 2          # 2 = sobrevive à perda de um pod/nó sem degradar; é a folga do pico típico
+  maxReplicas: 12         # teto de custo e de conexões (Mongo/Dragonfly): 12 × pool
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60   # % do REQUEST (500m). 60 e não 80: sobra para a rajada enquanto pods novos sobem
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0   # subir já
+      selectPolicy: Max
+      policies:
+        - type: Percent
+          value: 100                  # pode dobrar a cada 30 s...
+          periodSeconds: 30
+        - type: Pods
+          value: 4                    # ...ou somar 4 pods, o que for MAIOR (selectPolicy: Max)
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 300 # descer devagar: 5 min de calma antes de reduzir
+      selectPolicy: Max
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60

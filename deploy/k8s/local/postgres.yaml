@@ -1,0 +1,62 @@
+# PostgreSQL descartável para o laboratório (o AKS usa o Azure Database for PostgreSQL Flexible).
+# Sem volume persistente: apagou o pod, perdeu os dados. É de propósito.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres
+  namespace: creditflow-dados
+stringData:
+  POSTGRES_PASSWORD: postgres-local-123
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: creditflow-dados
+data:
+  01-bancos.sql: |
+    CREATE DATABASE creditflow;
+    CREATE DATABASE keycloak;
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: creditflow-dados
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: docker.io/library/postgres:17-alpine
+          ports: [{ name: pg, containerPort: 5432 }]
+          envFrom: [{ secretRef: { name: postgres } }]
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "postgres"] }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            - { name: init, mountPath: /docker-entrypoint-initdb.d }
+            - { name: dados, mountPath: /var/lib/postgresql/data }
+      volumes:
+        - name: init
+          configMap: { name: postgres-init }
+        - name: dados
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: creditflow-dados
+spec:
+  selector: { app: postgres }
+  ports: [{ name: pg, port: 5432, targetPort: pg }]

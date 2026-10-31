@@ -1,0 +1,109 @@
+{{- /*
+Keycloak gerenciado pelo operador oficial. O operador cria o StatefulSet, o Service
+"keycloak-service" (8080 com httpEnabled) e o Service de descoberta do cluster (cache Infinispan
+entre as instâncias). O TLS termina no Gateway; dentro do cluster o tráfego é HTTP e o Keycloak
+confia nos cabeçalhos X-Forwarded-* (proxy.headers).
+*/ -}}
+{{- $host := printf "%s.%s" .Values.subdominio .Values.dominio }}
+{{- if .Values.banco.doCofre }}
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: keycloak-banco
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: azure-kv
+  target:
+    name: keycloak-banco
+    creationPolicy: Owner
+    template:
+      engineVersion: v2
+      data:
+        host: "{{ "{{" }} .host {{ "}}" }}"
+        username: {{ .Values.banco.usuario | quote }}
+        password: "{{ "{{" }} .senha {{ "}}" }}"
+        adminUsuario: "{{ "{{" }} .adminUsuario {{ "}}" }}"
+        adminSenha: "{{ "{{" }} .adminSenha {{ "}}" }}"
+  data:
+    - secretKey: host
+      remoteRef: { key: postgres-host }
+    - secretKey: senha
+      remoteRef: { key: postgres-keycloak-senha }
+    - secretKey: adminUsuario
+      remoteRef: { key: postgres-admin-usuario }
+    - secretKey: adminSenha
+      remoteRef: { key: postgres-admin-senha }
+---
+{{- end }}
+apiVersion: k8s.keycloak.org/v2beta1
+kind: Keycloak
+metadata:
+  name: keycloak
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  instances: {{ .Values.instancias }}
+  resources:
+    {{- toYaml .Values.recursos | nindent 4 }}
+  db:
+    vendor: postgres
+    {{- if .Values.banco.doCofre }}
+    host: {{ required "banco.host é obrigatório (o operador não lê o host de um Secret)" .Values.banco.host }}
+    {{- else }}
+    host: {{ .Values.banco.host | default "postgres.creditflow-dados.svc" }}
+    {{- end }}
+    port: 5432
+    database: {{ .Values.banco.nome }}
+    usernameSecret:
+      name: keycloak-banco
+      key: username
+    passwordSecret:
+      name: keycloak-banco
+      key: password
+    poolMinSize: 2
+    poolMaxSize: 20
+  http:
+    httpEnabled: true
+  hostname:
+    hostname: {{ .Values.hostnamePublico | default (printf "https://%s" $host) | quote }}
+    # Quem chama pelo endereço interno (as APIs) recebe endpoints internos no discovery;
+    # o "iss" do token continua sendo o hostname público.
+    backchannelDynamic: true
+    strict: false
+  proxy:
+    headers: xforwarded
+  additionalOptions:
+    - name: db-url-properties
+      value: {{ .Values.banco.propriedadesUrl | quote }}
+    - name: health-enabled
+      value: "true"
+    - name: metrics-enabled
+      value: "true"
+{{- if .Values.gateway.nome }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: keycloak
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.nome }}
+      namespace: {{ .Values.gateway.namespace }}
+      {{- with .Values.gateway.secao }}
+      sectionName: {{ . }}
+      {{- end }}
+  hostnames:
+    - {{ $host | quote }}
+  rules:
+    # O console administrativo NÃO é publicado: acesso por port-forward.
+    - matches:
+        - path: { type: PathPrefix, value: /realms/ }
+        - path: { type: PathPrefix, value: /resources/ }
+      backendRefs:
+        - name: keycloak-service
+          port: 8080
+{{- end }}

@@ -1,0 +1,8 @@
+apiVersion: v2
+name: creditflow-raiz
+description: >-
+  App-of-apps do CreditFlow. Gera uma Application por componente, cada uma com sua onda
+  de sincronização: operadores (-3) -> configuração de plataforma (-2) -> dados (-1) ->
+  Keycloak e observabilidade (0) -> aplicação via ApplicationSet (1).
+type: application
+version: 0.1.0

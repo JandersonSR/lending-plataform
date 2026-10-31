@@ -1,0 +1,19 @@
+# Kafka de dev: um nó com os dois papéis (controlador + broker), replicação 1.
+kafka:
+  pools:
+    - nome: unico
+      papeis: [controller, broker]
+      replicas: 1
+      disco: 20Gi
+      recursos:
+        requests: { cpu: 250m, memory: 1536Mi }
+        limits: { memory: 1536Mi }
+  rackPorZona: false
+  replicacao: 1
+  minInsync: 1
+dragonfly:
+  replicas: 1
+  memoriaMaxima: 512mb
+  recursos:
+    requests: { cpu: 100m, memory: 640Mi }
+    limits: { memory: 640Mi }

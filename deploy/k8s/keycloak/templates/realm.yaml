@@ -1,0 +1,67 @@
+{{- /*
+O realm creditflow como código. A fonte é realm/creditflow-realm.json, cópia de
+deploy/local/keycloak/creditflow-realm.json (o CI verifica que as duas são iguais).
+Transformações por ambiente, feitas aqui no template:
+  - sem usuários de teste e sem o client creditflow-testes fora de dev;
+  - redirectUris extras do SPA;
+  - o segredo do client confidencial creditflow-backoffice vira o placeholder
+    ${BACKOFFICE_CLIENT_SECRET}, preenchido pelo operador a partir de um Secret (Key Vault).
+Atenção: o KeycloakRealmImport cria o realm se ele não existir. Ele NÃO atualiza um realm
+existente: mudanças depois do primeiro import são feitas por migração de realm (lição 7.5).
+*/ -}}
+{{- if .Values.realm.importar }}
+{{- $realm := .Files.Get "realm/creditflow-realm.json" | fromJson }}
+{{- if not .Values.realm.incluirDadosDeTeste }}
+{{- $_ := unset $realm "users" }}
+{{- end }}
+{{- $clientes := list }}
+{{- range $realm.clients }}
+{{- if or $.Values.realm.incluirDadosDeTeste (ne .clientId "creditflow-testes") }}
+{{- if and (eq .clientId "creditflow-backoffice") $.Values.realm.segredoBackofficeDoCofre }}
+{{- $_ := set . "secret" "${BACKOFFICE_CLIENT_SECRET}" }}
+{{- end }}
+{{- if and (eq .clientId "creditflow-web") $.Values.realm.redirectUrisWeb }}
+{{- $_ := set . "redirectUris" (concat .redirectUris $.Values.realm.redirectUrisWeb) }}
+{{- end }}
+{{- $clientes = append $clientes . }}
+{{- end }}
+{{- end }}
+{{- $_ := set $realm "clients" $clientes }}
+{{- if .Values.realm.segredoBackofficeDoCofre }}
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: keycloak-backoffice
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: azure-kv
+  target:
+    name: keycloak-backoffice
+    creationPolicy: Owner
+  data:
+    - secretKey: segredo
+      remoteRef: { key: keycloak-backoffice-segredo }
+---
+{{- end }}
+apiVersion: k8s.keycloak.org/v2beta1
+kind: KeycloakRealmImport
+metadata:
+  name: creditflow
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  keycloakCRName: keycloak
+  {{- if .Values.realm.segredoBackofficeDoCofre }}
+  placeholders:
+    BACKOFFICE_CLIENT_SECRET:
+      secret:
+        name: keycloak-backoffice
+        key: segredo
+  {{- end }}
+  realm:
+    {{- toYaml $realm | nindent 4 }}
+{{- end }}

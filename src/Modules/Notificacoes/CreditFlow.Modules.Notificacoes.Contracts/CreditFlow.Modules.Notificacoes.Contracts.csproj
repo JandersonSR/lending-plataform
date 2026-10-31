@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CreditFlow.Modules.Notificacoes.Contracts</RootNamespace>
+  </PropertyGroup>
+
+  <!-- Notificações só CONSOMEM eventos: ninguém chama este módulo de forma síncrona. O projeto existe
+       para manter a mesma forma de todos os módulos e receber um contrato se um dia for preciso. -->
+
+</Project>

@@ -1,0 +1,281 @@
+# Valores padrão do chart do CreditFlow.
+# Os valores de cada ambiente ficam em gitops/ambientes/<ambiente>/creditflow.yaml;
+# para rodar no kind, use values-local.yaml (deploy/helm/creditflow/values-local.yaml).
+# Explicação campo a campo: curso CreditFlow, lição 7.2.
+
+imagem:
+  repositorio: harbor.exemplo.com.br/creditflow/creditflow
+  # O CI grava tag E digest no values do ambiente. Se digest estiver preenchido, ele ganha:
+  # a tag é um apelido que pode mudar; o digest é a identidade do conteúdo (lição 10.3).
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+  #  - name: harbor-pull
+
+# ASPNETCORE_ENVIRONMENT de todos os perfis.
+ambiente: Production
+
+# Configuração NÃO secreta, igual para todos os perfis. Vira um ConfigMap montado como env.
+# As chaves seguem a convenção do .NET: "__" separa seções (Auth__Authority = Auth:Authority).
+configuracao:
+  Auth__Authority: https://auth.exemplo.com.br/realms/creditflow
+  Auth__Audience: creditflow-api
+  Kafka__BootstrapServers: creditflow-kafka-bootstrap.creditflow-dados.svc:9093
+  Kafka__SecurityProtocol: SaslSsl
+  Kafka__SaslMechanism: ScramSha512
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observabilidade.svc:4317
+  OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+  OTEL_METRIC_EXPORT_INTERVAL: "15000"
+  # Atrás do Gateway: o rate limit da Simulação é por IP do cliente (X-Forwarded-For).
+  ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+  DOTNET_gcConcurrent: "1"
+
+# Segredos: nunca no Git e nunca no values. O chart cria ExternalSecrets e o
+# External Secrets Operator materializa Secrets a partir do Key Vault (loja "azure")
+# ou dos Secrets que o Strimzi cria para cada KafkaUser (loja "kafka").
+segredos:
+  habilitado: true
+  intervaloAtualizacao: 1h
+  lojas:
+    azure:
+      kind: ClusterSecretStore
+      name: azure-kv
+    kafka:
+      kind: SecretStore
+      name: kafka-usuarios
+  # Cada item vira um Secret "<release>-<item>". "dados" mapeia apelido -> segredo remoto
+  # (string = nome; objeto = { chave, propriedade }). "template" monta as variáveis finais:
+  # o conteúdo entre chaves duplas é do template do ESO, não do Helm (o chart copia literalmente).
+  itens:
+    postgres:
+      loja: azure
+      dados:
+        host: postgres-host
+        senha: postgres-app-senha
+      template:
+        ConnectionStrings__Postgres: "Host={{ .host }};Database=creditflow;Username=creditflow_app;Password={{ .senha }};SSL Mode=Require;Maximum Pool Size=40;Timeout=5;Command Timeout=15"
+    mongo:
+      loja: azure
+      dados:
+        conexao: mongo-connection-string
+      template:
+        ConnectionStrings__Mongo: "{{ .conexao }}"
+    cache:
+      loja: azure
+      dados:
+        senha: dragonfly-senha
+      template:
+        ConnectionStrings__Cache: "creditflow-cache.creditflow-dados.svc:6379,password={{ .senha }},abortConnect=false,connectTimeout=2000,syncTimeout=1000"
+    kafka-geral:
+      loja: kafka
+      dados:
+        senha: { chave: creditflow-geral, propriedade: password }
+        ca: { chave: creditflow-cluster-ca-cert, propriedade: ca.crt }
+      template:
+        Kafka__SaslUsername: creditflow-geral
+        Kafka__SaslPassword: "{{ .senha }}"
+        Kafka__SslCaPem: "{{ .ca }}"
+    kafka-simulacao:
+      loja: kafka
+      dados:
+        senha: { chave: creditflow-simulacao, propriedade: password }
+        ca: { chave: creditflow-cluster-ca-cert, propriedade: ca.crt }
+      template:
+        Kafka__SaslUsername: creditflow-simulacao
+        Kafka__SaslPassword: "{{ .senha }}"
+        Kafka__SslCaPem: "{{ .ca }}"
+    kafka-pagamentos:
+      loja: kafka
+      dados:
+        senha: { chave: creditflow-pagamentos, propriedade: password }
+        ca: { chave: creditflow-cluster-ca-cert, propriedade: ca.crt }
+      template:
+        Kafka__SaslUsername: creditflow-pagamentos
+        Kafka__SaslPassword: "{{ .senha }}"
+        Kafka__SslCaPem: "{{ .ca }}"
+    # Formato que o TriggerAuthentication do KEDA espera (sasl, username, password, tls, ca).
+    keda-kafka:
+      loja: kafka
+      dados:
+        senha: { chave: creditflow-keda, propriedade: password }
+        ca: { chave: creditflow-cluster-ca-cert, propriedade: ca.crt }
+      template:
+        sasl: scram_sha512
+        username: creditflow-keda
+        password: "{{ .senha }}"
+        tls: enable
+        ca: "{{ .ca }}"
+    migracoes:
+      loja: azure
+      dados:
+        host: postgres-host
+        usuario: postgres-admin-usuario
+        senhaAdmin: postgres-admin-senha
+        senhaApp: postgres-app-senha
+      template:
+        PGHOST: "{{ .host }}"
+        PGUSER: "{{ .usuario }}"
+        PGPASSWORD: "{{ .senhaAdmin }}"
+        PGDATABASE: creditflow
+        PGSSLMODE: require
+        SENHA_APP: "{{ .senhaApp }}"
+
+# Workload Identity: o client id da identidade gerenciada (Terraform 10-azure, output
+# app_client_id). Vazio = ServiceAccounts sem a anotação e pods sem o rótulo.
+workloadIdentity:
+  clientId: ""
+
+# Rotas HTTP. tipo: gateway (Gateway API, HTTPRoute) | ingress (Ingress clássico) | nenhum.
+# O projeto usa Gateway API com Envoy Gateway: o ingress-nginx foi aposentado em março de 2026.
+rotas:
+  tipo: gateway
+  hosts:
+    - api.exemplo.com.br
+  gateway:
+    nome: publico
+    namespace: gateway
+    secao: https-api
+  ingress:
+    className: ""
+    anotacoes: {}
+    tlsSecret: ""
+
+# Valores comuns a todos os perfis (cada perfil pode sobrescrever).
+padrao:
+  podAnotacoes: {}
+  podRotulos: {}
+  nodeSelector: {}
+  tolerations: []
+  terminationGracePeriodSeconds: 30
+  # Pausa antes do SIGTERM: dá tempo de o Endpoint sair do balanceador antes de o
+  # processo parar de aceitar conexões (lição 7.3). Usa a ação "sleep" nativa:
+  # a imagem chiseled não tem /bin/sleep.
+  preStopSegundos: 5
+  spreadPorZona: true
+
+# Os perfis de execução. Cada chave vira Deployment + ServiceAccount (+ Service, HPA ou
+# ScaledObject, PDB, regras de rota). A imagem é a mesma; mudam módulos, papel e escala.
+perfis:
+  api-geral:
+    habilitado: true
+    papel: api
+    modulos: [Clientes, Propostas, Notificacoes]
+    segredos: [postgres, mongo, cache, kafka-geral]
+    replicas: 2
+    recursos:
+      requests: { cpu: 250m, memory: 384Mi }
+      limits: { memory: 768Mi }
+    sondas:
+      startup: { caminho: /healthz/live, periodSeconds: 2, failureThreshold: 30, timeoutSeconds: 2 }
+      readiness: { caminho: /healthz/ready, periodSeconds: 5, failureThreshold: 3, timeoutSeconds: 3 }
+      liveness: { caminho: /healthz/live, periodSeconds: 10, failureThreshold: 3, timeoutSeconds: 3 }
+    autoescala:
+      tipo: hpa
+      minimo: 2
+      maximo: 6
+      cpuAlvo: 70
+    pdb: { minAvailable: 1 }
+    rotas:
+      - caminho: /
+    env: {}
+
+  api-simulacao:
+    habilitado: true
+    papel: api
+    modulos: [Simulacao]
+    segredos: [mongo, cache, kafka-simulacao]
+    replicas: 2
+    # CPU-bound (Price/SAC/IRR): request de CPU alto e SEM limite de CPU. Limite de CPU no
+    # Linux vira throttling do CFS e a latência de cauda explode (lição 7.3).
+    recursos:
+      requests: { cpu: 500m, memory: 256Mi }
+      limits: { memory: 512Mi }
+    sondas:
+      startup: { caminho: /healthz/live, periodSeconds: 2, failureThreshold: 30, timeoutSeconds: 2 }
+      readiness: { caminho: /healthz/ready, periodSeconds: 5, failureThreshold: 3, timeoutSeconds: 3 }
+      # Com a CPU saturada, uma resposta lenta da liveness NÃO significa processo travado.
+      # Timeout e tolerância maiores evitam matar pods justamente no pico.
+      liveness: { caminho: /healthz/live, periodSeconds: 10, failureThreshold: 6, timeoutSeconds: 5 }
+    autoescala:
+      tipo: hpa
+      minimo: 2
+      maximo: 12
+      cpuAlvo: 60
+    pdb: { minAvailable: 1 }
+    rotas:
+      - caminho: /v1/simulacoes
+    env: {}
+
+  api-pagamentos:
+    habilitado: true
+    papel: api
+    modulos: [Pagamentos]
+    segredos: [postgres]
+    replicas: 2
+    recursos:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { memory: 512Mi }
+    sondas:
+      startup: { caminho: /healthz/live, periodSeconds: 2, failureThreshold: 30, timeoutSeconds: 2 }
+      readiness: { caminho: /healthz/ready, periodSeconds: 5, failureThreshold: 3, timeoutSeconds: 3 }
+      liveness: { caminho: /healthz/live, periodSeconds: 10, failureThreshold: 3, timeoutSeconds: 3 }
+    autoescala:
+      tipo: nenhum
+    pdb: { minAvailable: 1 }
+    rotas:
+      - caminho: /v1/pagamentos
+    env: {}
+
+  worker-pagamentos:
+    habilitado: true
+    papel: worker
+    modulos: [Pagamentos]
+    segredos: [postgres, kafka-pagamentos]
+    replicas: 1
+    # Sem Service e sem rota: ninguém chama o worker por HTTP. A porta 8080 existe só para as sondas.
+    servico: false
+    recursos:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { memory: 512Mi }
+    terminationGracePeriodSeconds: 60
+    preStopSegundos: 0
+    sondas:
+      startup: { caminho: /healthz/live, periodSeconds: 2, failureThreshold: 30, timeoutSeconds: 2 }
+      # O worker não recebe tráfego; a readiness só serve para o rolling update esperar
+      # o consumidor entrar no grupo antes de derrubar o pod antigo.
+      readiness: { caminho: /healthz/ready, periodSeconds: 10, failureThreshold: 3, timeoutSeconds: 3 }
+      # A liveness do worker verifica o "batimento" do laço de consumo (pedido em PEDIDOS.md):
+      # um laço travado não derruba o processo, e só ela percebe.
+      liveness: { caminho: /healthz/live, periodSeconds: 15, failureThreshold: 4, timeoutSeconds: 3 }
+    autoescala:
+      tipo: keda
+      minimo: 1
+      # Nunca mais réplicas que partições: o consumidor excedente fica parado.
+      maximo: 6
+      kafka:
+        topico: creditflow.propostas.v1
+        grupo: creditflow-pagamentos
+        lagLimite: "50"
+        bootstrapServers: creditflow-kafka-bootstrap.creditflow-dados.svc:9093
+        segredo: keda-kafka
+      pollingInterval: 15
+      cooldownPeriod: 120
+    pdb: { maxUnavailable: 1 }
+    rotas: []
+    env: {}
+
+# Migrações como Job (hook pre-install/pre-upgrade; no Argo CD vira PreSync).
+# Aplica o DDL idempotente de cada módulo (sql/*.sql) com psql, usando o usuário de DDL (admin);
+# a aplicação roda com creditflow_app (só DML).
+migracoes:
+  habilitado: true
+  imagemPsql: docker.io/library/postgres:17-alpine
+  # Cria/atualiza o papel creditflow_app e os privilégios (depois do DDL).
+  papeis:
+    habilitado: true
+  backoffLimit: 1
+  activeDeadlineSeconds: 600
+  recursos:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }

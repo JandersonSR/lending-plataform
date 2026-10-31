@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CreditFlow.Modules.Clientes</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\CreditFlow.BuildingBlocks\CreditFlow.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\CreditFlow.Modules.Clientes.Contracts\CreditFlow.Modules.Clientes.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- DDL do schema "clientes", lido em tempo de execução (nome lógico fixo: não depende da pasta). -->
+    <EmbeddedResource Include="Infrastructure\Postgres\Sql\001_schema_clientes.sql" LogicalName="clientes.001_schema_clientes.sql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CreditFlow.Modules.Clientes.Tests" />
+    <InternalsVisibleTo Include="CreditFlow.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

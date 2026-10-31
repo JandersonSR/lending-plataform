@@ -1,0 +1,93 @@
+{{- /*
+Porta de entrada: Gateway API com Envoy Gateway.
+- GatewayClass "envoy" aponta para um EnvoyProxy que fixa o IP público (criado pelo
+  Terraform 10-azure) via anotações do Service LoadBalancer da Azure.
+- Um listener HTTPS por host: o cert-manager lê a anotação do Gateway e cria um
+  Certificate por listener (HTTP-01 não emite curinga).
+- O listener HTTP só serve o desafio ACME e o redirecionamento para HTTPS.
+*/ -}}
+{{- $d := .Values.dominio }}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: publico
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        replicas: {{ .Values.gateway.replicas }}
+      {{- if .Values.azure.ipPublicoNome }}
+      envoyService:
+        annotations:
+          service.beta.kubernetes.io/azure-pip-name: {{ .Values.azure.ipPublicoNome | quote }}
+          service.beta.kubernetes.io/azure-load-balancer-resource-group: {{ .Values.azure.grupoRecursosIp | quote }}
+      {{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: {{ .Values.gateway.classe }}
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: publico
+    namespace: envoy-gateway-system
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: publico
+  namespace: gateway
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  gatewayClassName: {{ .Values.gateway.classe }}
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- range $nome, $sub := .Values.gateway.hosts }}
+    - name: https-{{ $nome }}
+      port: 443
+      protocol: HTTPS
+      hostname: {{ printf "%s.%s" $sub $d | quote }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: tls-{{ $nome }}
+      allowedRoutes:
+        namespaces:
+          # Só estes namespaces penduram rotas no Gateway público.
+          from: Selector
+          selector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values: [creditflow, keycloak, harbor]
+    {{- end }}
+---
+# HTTP -> HTTPS. O desafio ACME (/.well-known/acme-challenge/<token>) é uma rota mais
+# específica que o cert-manager cria no mesmo listener, então ela ganha desta.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: redireciona-https
+  namespace: gateway
+spec:
+  parentRefs:
+    - name: publico
+      sectionName: http
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301

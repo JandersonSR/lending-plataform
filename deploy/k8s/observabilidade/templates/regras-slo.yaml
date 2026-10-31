@@ -1,0 +1,90 @@
+{{- /*
+SLOs do CreditFlow como PrometheusRule (lição 12.2).
+- Regras de GRAVAÇÃO: a razão de eventos ruins por janela (5m, 30m, 1h, 6h, 30d).
+- Alertas de QUEIMA de error budget em duas janelas (o método do livro de SRE do Google):
+    página: queima > 14,4x na janela de 1h E na de 5m  (2% do budget de 30 dias em 1 hora)
+    ticket: queima > 6x   na janela de 6h E na de 30m  (5% do budget em 6 horas)
+  A janela curta faz o alerta PARAR logo que o problema acaba.
+Rótulos vindos do OTel Collector (resource_to_telemetry_conversion): service_name, http_route...
+*/ -}}
+{{- $s := .Values.slo.simulacao }}
+{{- $d := .Values.slo.desembolso }}
+{{- $janelas := list "5m" "30m" "1h" "6h" "30d" }}
+{{- $simSel := printf "service_name=%q,http_route=~%q" $s.servico (printf "%s.*" $s.rota) }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: creditflow-slo
+  labels:
+    {{- toYaml .Values.rotulos | nindent 4 }}
+spec:
+  groups:
+    - name: creditflow-slo-gravacao
+      interval: 30s
+      rules:
+        {{- range $janelas }}
+        # Simulação, disponibilidade: fração de respostas 5xx.
+        - record: creditflow:slo_simulacao_erros:razao{{ . }}
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{ {{- $simSel }},http_response_status_code=~"5.."}[{{ . }}]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{ {{- $simSel }}}[{{ . }}]))
+        # Simulação, latência: fração de requisições acima de {{ $s.latenciaLimite }} s.
+        - record: creditflow:slo_simulacao_lentas:razao{{ . }}
+          expr: |
+            1 - (
+              sum(rate(http_server_request_duration_seconds_bucket{ {{- $simSel }},le={{ $s.latenciaLimite | quote }}}[{{ . }}]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{ {{- $simSel }}}[{{ . }}]))
+            )
+        # Desembolso: fração que NÃO foi concluída em até {{ $d.limiteSegundos }} s do contrato (falhas contam como ruins).
+        - record: creditflow:slo_desembolso_ruins:razao{{ . }}
+          expr: |
+            1 - (
+              sum(rate(creditflow_desembolso_duracao_seconds_bucket{creditflow_resultado="concluido",le={{ $d.limiteSegundos | quote }}}[{{ . }}]))
+              /
+              sum(rate(creditflow_desembolso_duracao_seconds_count[{{ . }}]))
+            )
+        {{- end }}
+        # Quanto do error budget de 30 dias ainda resta (1 = intacto, 0 = gasto, negativo = estourado).
+        - record: creditflow:slo_simulacao_erros:budget_restante
+          expr: 1 - (creditflow:slo_simulacao_erros:razao30d / {{ subf 1.0 $s.disponibilidade | printf "%.4f" }})
+        - record: creditflow:slo_simulacao_lentas:budget_restante
+          expr: 1 - (creditflow:slo_simulacao_lentas:razao30d / {{ subf 1.0 $s.latenciaObjetivo | printf "%.4f" }})
+        - record: creditflow:slo_desembolso_ruins:budget_restante
+          expr: 1 - (creditflow:slo_desembolso_ruins:razao30d / {{ subf 1.0 $d.objetivo | printf "%.4f" }})
+
+    - name: creditflow-slo-alertas
+      rules:
+        {{- $slos := list
+              (dict "nome" "SimulacaoErros" "serie" "slo_simulacao_erros" "orcamento" (subf 1.0 $s.disponibilidade | printf "%.4f") "runbook" "slo-simulacao.md" "resumo" "Simulação respondendo 5xx acima do error budget")
+              (dict "nome" "SimulacaoLenta" "serie" "slo_simulacao_lentas" "orcamento" (subf 1.0 $s.latenciaObjetivo | printf "%.4f") "runbook" "slo-simulacao.md" "resumo" (printf "Simulação acima de %s s com frequência demais" $s.latenciaLimite))
+              (dict "nome" "DesembolsoLento" "serie" "slo_desembolso_ruins" "orcamento" (subf 1.0 $d.objetivo | printf "%.4f") "runbook" "slo-desembolso.md" "resumo" "Desembolsos não concluídos em até 5 minutos do contrato") }}
+        {{- range $slos }}
+        - alert: {{ .nome }}QueimaRapida
+          expr: |
+            creditflow:{{ .serie }}:razao1h > (14.4 * {{ .orcamento }})
+            and
+            creditflow:{{ .serie }}:razao5m > (14.4 * {{ .orcamento }})
+          for: 2m
+          labels:
+            severity: {{ $.Values.alertas.severidadePagina }}
+            slo: {{ .serie }}
+          annotations:
+            summary: {{ .resumo | quote }}
+            description: "Queimando o error budget mais de 14,4x mais rápido que o sustentável: no ritmo atual, o budget de 30 dias acaba em ~2 dias."
+            runbook_url: {{ printf "%s/%s" $.Values.alertas.runbooks .runbook | quote }}
+        - alert: {{ .nome }}QueimaLenta
+          expr: |
+            creditflow:{{ .serie }}:razao6h > (6 * {{ .orcamento }})
+            and
+            creditflow:{{ .serie }}:razao30m > (6 * {{ .orcamento }})
+          for: 15m
+          labels:
+            severity: {{ $.Values.alertas.severidadeTicket }}
+            slo: {{ .serie }}
+          annotations:
+            summary: {{ .resumo | quote }}
+            description: "Queima 6x acima do sustentável nas últimas 6 horas: abra um chamado e investigue no horário comercial."
+            runbook_url: {{ printf "%s/%s" $.Values.alertas.runbooks .runbook | quote }}
+        {{- end }}

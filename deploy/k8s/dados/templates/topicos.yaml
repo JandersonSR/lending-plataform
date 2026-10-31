@@ -1,0 +1,41 @@
+{{- /*
+Tópicos como código. O Topic Operator cria e reconcilia: aumentar partições funciona;
+DIMINUIR não existe no Kafka (o operador recusa e marca o KafkaTopic como NotReady).
+O nome do recurso não aceita "." no meio de forma segura em todos os casos, por isso
+metadata.name é derivado e spec.topicName guarda o nome real.
+*/ -}}
+{{- $k := .Values.kafka }}
+{{- $t := .Values.topicos }}
+{{- range $t.principais }}
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: {{ . | replace "." "-" }}
+  labels:
+    strimzi.io/cluster: {{ $k.nome }}
+spec:
+  topicName: {{ . }}
+  partitions: {{ $t.particoes }}
+  replicas: {{ $k.replicacao }}
+  config:
+    retention.ms: {{ $t.retencaoMs | int64 }}
+    min.insync.replicas: {{ $k.minInsync }}
+    cleanup.policy: delete
+---
+{{- end }}
+{{- range $t.dlt.nomes }}
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: {{ . | replace "." "-" }}
+  labels:
+    strimzi.io/cluster: {{ $k.nome }}
+spec:
+  topicName: {{ . }}
+  partitions: {{ $t.dlt.particoes }}
+  replicas: {{ $k.replicacao }}
+  config:
+    retention.ms: {{ $t.dlt.retencaoMs | int64 }}
+    min.insync.replicas: {{ $k.minInsync }}
+---
+{{- end }}

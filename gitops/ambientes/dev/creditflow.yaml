@@ -1,0 +1,24 @@
+# Valores do CreditFlow no ambiente DEV. O bloco "imagem" é ESCRITO PELO CI (job promover-dev):
+# não edite à mão; para voltar uma versão, reverta o commit do bot (lição 11.4).
+imagem:
+  tag: "0.1.0"
+  digest: ""
+  pullSecrets:
+    - name: harbor-pull
+
+ambiente: Development
+
+perfis:
+  api-geral:
+    autoescala: { tipo: hpa, minimo: 1, maximo: 3, cpuAlvo: 70 }
+    pdb: { maxUnavailable: 1 }
+  api-simulacao:
+    autoescala: { tipo: hpa, minimo: 1, maximo: 4, cpuAlvo: 60 }
+    pdb: { maxUnavailable: 1 }
+  api-pagamentos:
+    replicas: 1
+    pdb: { maxUnavailable: 1 }
+  worker-pagamentos:
+    autoescala:
+      minimo: 1
+      maximo: 3

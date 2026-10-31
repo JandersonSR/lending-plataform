@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "creditflow.nome" . }}-config
+  labels:
+    {{- include "creditflow.rotulosComuns" . | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.configuracao }}
+  {{ $k }}: {{ $v | toString | quote }}
+  {{- end }}

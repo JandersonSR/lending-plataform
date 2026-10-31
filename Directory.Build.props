@@ -1,0 +1,41 @@
+<Project>
+  <!--
+    Lido automaticamente por TODOS os .csproj abaixo desta pasta (o MSBuild sobe as pastas procurando
+    este nome). É o "tsconfig.base.json" da solução: regras de compilação num lugar só.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- .NET 10 já usa C# 14 por padrão; deixar explícito evita surpresa quando o SDK mudar. -->
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Warning é bug que ainda não aconteceu. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!--
+      Exceção: avisos de vulnerabilidade do NuGet Audit (NU1901..NU1904) continuam aparecendo,
+      mas não quebram o build local. Quem barra imagem vulnerável é o scan no CI/Harbor (módulo 10).
+    -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+
+    <!--
+      Analisadores da Microsoft no nível padrão da versão mais nova. "latest-recommended" liga dezenas
+      de regras CA como warning (e portanto erro): suba para ele como exercício, depois de compilar.
+    -->
+    <AnalysisLevel>latest</AnalysisLevel>
+
+    <!-- Build determinístico e reprodutível (mesmo fonte => mesmos binários), útil no CI e na imagem. -->
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <Authors>Janderson da Silva Rodrigues</Authors>
+    <Company>CreditFlow (projeto de estudo)</Company>
+  </PropertyGroup>
+
+  <!-- Projetos de teste: nomes com "_" e regras do xUnit não devem travar o build. -->
+  <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('Tests'))">
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>

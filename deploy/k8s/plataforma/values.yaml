@@ -1,0 +1,32 @@
+# Valores preenchidos pelo Argo CD a partir das anotações do Secret de cluster que o
+# Terraform (30-app) cria. Ver gitops/raiz/templates/apps.yaml e a lição 11.2.
+ambiente: dev
+dominio: exemplo.com.br
+
+acme:
+  email: ""
+  # Use o staging enquanto testa: o servidor de produção do Let's Encrypt tem limite de emissões.
+  servidor: https://acme-staging-v02.api.letsencrypt.org/directory
+
+azure:
+  tenantId: ""
+  keyVaultUrl: ""
+  esoClientId: ""
+  ipPublicoNome: ""
+  grupoRecursosIp: ""
+
+gateway:
+  classe: envoy
+  replicas: 2
+  # Subdomínios publicados no Gateway: um listener HTTPS (e um certificado) por host.
+  hosts:
+    api: api
+    auth: auth
+    harbor: harbor
+
+assinatura:
+  habilitado: true
+  imagens: "harbor.exemplo.com.br/creditflow/**"
+  # Só imagens assinadas pelo workflow de CI da branch main deste repositório.
+  emissor: https://token.actions.githubusercontent.com
+  identidade: '^https://github\.com/JandersonSR/lending-plataform/\.github/workflows/ci\.yml@refs/heads/main$'

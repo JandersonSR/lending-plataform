@@ -1,0 +1,2 @@
+# Produção: os padrões do chart (3 controladores + 3 brokers por zona, replicação 3, min ISR 2).
+{}

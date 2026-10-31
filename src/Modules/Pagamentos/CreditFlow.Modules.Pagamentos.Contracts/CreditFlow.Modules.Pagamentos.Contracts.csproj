@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Só o que outros módulos podem ver de Pagamentos: eventos de integração e a interface de consulta.
+       Não referencia o projeto do módulo (a seta é sempre módulo → Contracts, nunca o contrário). -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\CreditFlow.BuildingBlocks\CreditFlow.BuildingBlocks.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,23 @@
+# Lido pelo BuildKit porque está ao lado do Dockerfile e se chama <Dockerfile>.dockerignore.
+# Tudo o que não precisa ir para o contexto de build fica de fora: o contexto
+# menor deixa o build mais rápido e evita levar segredos locais para a imagem.
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+**/.idea/
+**/*.user
+**/TestResults/
+**/node_modules/
+.git/
+.github/
+docs/
+deploy/
+infra/
+gitops/
+load/
+tests/
+**/appsettings.*.local.json
+**/.env
+**/*.pfx
+**/*.pem

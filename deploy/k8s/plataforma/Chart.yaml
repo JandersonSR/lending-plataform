@@ -1,0 +1,9 @@
+apiVersion: v2
+name: creditflow-plataforma
+description: >-
+  Configuração de plataforma que depende dos operadores já instalados pelo Terraform
+  (20-plataforma): namespaces, Gateway (Envoy Gateway), emissor ACME (cert-manager),
+  loja de segredos do Key Vault (External Secrets) e política de assinatura (policy-controller).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

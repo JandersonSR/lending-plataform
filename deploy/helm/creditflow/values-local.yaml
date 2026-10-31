@@ -1,0 +1,90 @@
+# Valores para rodar no kind (deploy/k8s/local/subir.sh). Sem Azure, sem ESO, sem Harbor:
+# segredos viram Secrets comuns, Kafka sem autenticação, uma réplica por perfil.
+# NUNCA use este arquivo fora do laboratório: há senhas em texto aqui de propósito.
+
+imagem:
+  repositorio: creditflow
+  tag: dev
+  pullPolicy: Never   # a imagem foi carregada no kind com "kind load docker-image"
+
+ambiente: Development
+
+configuracao:
+  # Issuer = endereço que o seu navegador/curl usa (port-forward 8081).
+  # Metadata = endereço que o POD usa para baixar a configuração e as chaves (DNS do cluster).
+  # Chaves de AuthOpcoes (BuildingBlocks/Auth): MetadataAddress e ExigirHttps.
+  Auth__Authority: http://localhost:8081/realms/creditflow
+  Auth__MetadataAddress: http://keycloak-service.keycloak.svc:8080/realms/creditflow/.well-known/openid-configuration
+  Auth__ExigirHttps: "false"
+  Auth__Audience: creditflow-api
+  Kafka__BootstrapServers: creditflow-kafka-bootstrap.creditflow-dados.svc:9092
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm.observabilidade.svc:4317
+  OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+  OTEL_METRIC_EXPORT_INTERVAL: "10000"
+
+segredos:
+  habilitado: false
+
+segredosLocais:
+  postgres:
+    ConnectionStrings__Postgres: "Host=postgres.creditflow-dados.svc;Database=creditflow;Username=creditflow_app;Password=app-local-123"
+  mongo:
+    ConnectionStrings__Mongo: "mongodb://mongo.creditflow-dados.svc:27017/creditflow"
+  cache:
+    ConnectionStrings__Cache: "creditflow-cache.creditflow-dados.svc:6379,abortConnect=false"
+  kafka-geral: { Kafka__ClientId: creditflow-geral }
+  kafka-simulacao: { Kafka__ClientId: creditflow-simulacao }
+  kafka-pagamentos: { Kafka__ClientId: creditflow-pagamentos }
+  keda-kafka: { sasl: none, tls: disable, username: "", password: "", ca: "" }
+  migracoes:
+    PGHOST: postgres.creditflow-dados.svc
+    PGUSER: postgres
+    PGPASSWORD: postgres-local-123
+    PGDATABASE: creditflow
+    PGSSLMODE: disable
+    SENHA_APP: app-local-123
+
+rotas:
+  tipo: gateway
+  hosts:
+    - api.127.0.0.1.nip.io
+  gateway:
+    nome: local
+    namespace: gateway
+    secao: http
+
+padrao:
+  spreadPorZona: false
+
+perfis:
+  api-geral:
+    replicas: 1
+    autoescala: { tipo: nenhum }
+    recursos:
+      requests: { cpu: 50m, memory: 192Mi }
+      limits: { memory: 512Mi }
+  api-simulacao:
+    replicas: 1
+    autoescala: { tipo: hpa, minimo: 1, maximo: 3, cpuAlvo: 60 }
+    recursos:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { memory: 384Mi }
+  api-pagamentos:
+    replicas: 1
+    recursos:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { memory: 384Mi }
+  worker-pagamentos:
+    autoescala:
+      tipo: keda
+      minimo: 1
+      maximo: 3
+      kafka:
+        topico: creditflow.propostas.v1
+        grupo: creditflow-pagamentos
+        lagLimite: "20"
+        bootstrapServers: creditflow-kafka-bootstrap.creditflow-dados.svc:9092
+        segredo: keda-kafka
+    recursos:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { memory: 384Mi }

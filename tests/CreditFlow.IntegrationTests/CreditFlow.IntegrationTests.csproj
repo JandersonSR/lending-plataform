@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testes contra as dependências DE VERDADE, em contêineres descartáveis (Testcontainers): PostgreSQL,
+    MongoDB, Keycloak (com o realm do repositório) e Dragonfly. Precisam de Docker na máquina/CI.
+    Rodar só estes: dotnet test tests/CreditFlow.IntegrationTests
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Testcontainers" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Testcontainers.MongoDb" />
+    <PackageReference Include="Testcontainers.Keycloak" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Host\CreditFlow.Host\CreditFlow.Host.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- O realm é o MESMO arquivo do docker compose: se ele quebrar, este teste quebra. -->
+    <None Include="..\..\deploy\local\keycloak\creditflow-realm.json" Link="Auth\creditflow-realm.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Modules\Propostas\CreditFlow.Modules.Propostas\Infrastructure\Persistencia\Sql\001_schema_propostas.sql" Link="Propostas\001_schema_propostas.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

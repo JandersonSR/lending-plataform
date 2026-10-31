@@ -1,0 +1,70 @@
+# Terraform: plan em PR (comentado no log), apply na main por ambiente com aprovação
+# (GitHub Environments "dev" e "prod" com revisores obrigatórios). Login na Azure por OIDC:
+# nenhum segredo de nuvem guardado no GitHub (identidade criada na camada 00-base).
+name: infra
+
+on:
+  pull_request:
+    paths: ["infra/terraform/**"]
+  push:
+    branches: [main]
+    paths: ["infra/terraform/**"]
+
+permissions: {}
+
+env:
+  ARM_USE_OIDC: "true"
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+      - name: fmt e validate (sem backend)
+        run: |
+          terraform fmt -check -recursive infra/terraform
+          for camada in 00-base 10-azure 20-plataforma 30-app; do
+            terraform -chdir=infra/terraform/$camada init -backend=false -input=false
+            terraform -chdir=infra/terraform/$camada validate
+          done
+
+  plano:
+    needs: validar
+    strategy:
+      matrix:
+        ambiente: [dev, prod]
+        camada: [10-azure, 20-plataforma, 30-app]
+      max-parallel: 1
+    runs-on: ubuntu-latest
+    # Em PR usa o subject "pull_request"; na main, o environment (com aprovação) do ambiente.
+    environment: ${{ github.event_name == 'push' && matrix.ambiente || null }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: kubelogin (camadas 20 e 30 falam com o AKS por Entra ID)
+        if: matrix.camada != '10-azure'
+        run: az aks install-cli --kubelogin-version latest --install-location /tmp/kubectl --kubelogin-install-location /usr/local/bin/kubelogin
+      - name: init
+        working-directory: infra/terraform/${{ matrix.camada }}
+        run: terraform init -input=false -backend-config=ambientes/${{ matrix.ambiente }}.backend.hcl
+      - name: plan
+        working-directory: infra/terraform/${{ matrix.camada }}
+        run: terraform plan -input=false -lock-timeout=5m -var-file=ambientes/${{ matrix.ambiente }}.tfvars -out=plano
+      - name: apply
+        if: github.event_name == 'push'
+        working-directory: infra/terraform/${{ matrix.camada }}
+        run: terraform apply -input=false -lock-timeout=5m plano

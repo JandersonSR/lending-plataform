@@ -1,0 +1,9 @@
+# Valores do CreditFlow em PRODUÇÃO. A imagem chega aqui por PR de PROMOÇÃO: o mesmo digest
+# que passou em dev (workflow promover.yml). Nunca uma tag nova direto em prod.
+imagem:
+  tag: "0.1.0"
+  digest: ""
+  pullSecrets:
+    - name: harbor-pull
+
+ambiente: Production

@@ -1,0 +1,159 @@
+# Ambiente local do CreditFlow: tudo de que a API precisa, na sua máquina.
+#   docker compose -f deploy/local/docker-compose.yml up -d          (só a infraestrutura)
+#   dotnet run --project src/Host/CreditFlow.Host                     (a API, fora do Docker, porta 8080)
+#   docker compose -f deploy/local/docker-compose.yml --profile app up -d --build   (a API também em contêiner)
+# Cada serviço é explicado no curso, módulo 1, lição 1.6.
+name: creditflow
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: creditflow
+      POSTGRES_USER: creditflow
+      POSTGRES_PASSWORD: creditflow        # só local; em produção a senha vem do Key Vault
+    ports: ["5432:5432"]
+    volumes:
+      - postgres-dados:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U creditflow -d creditflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mongo:
+    image: mongo:8.0
+    ports: ["27017:27017"]
+    volumes:
+      - mongo-dados:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  dragonfly:
+    # Compatível com o protocolo do Redis: o StackExchange.Redis conversa com ele sem saber a diferença.
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2
+    command: ["--maxmemory=512mb", "--proactor_threads=2", "--version_check=false"]
+    ulimits:
+      memlock: -1                          # o Dragonfly trava páginas em memória (io_uring)
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  kafka:
+    # Kafka 4.x só existe em modo KRaft (sem ZooKeeper): este nó é broker E controller ao mesmo tempo.
+    image: apache/kafka:4.3.2
+    ports: ["9092:9092"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      # Três listeners: INTERNO (outros contêineres, kafka:19092), EXTERNO (sua máquina, localhost:9092) e CONTROLLER (quórum KRaft).
+      KAFKA_LISTENERS: INTERNO://:19092,EXTERNO://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNO://kafka:19092,EXTERNO://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNO:PLAINTEXT,EXTERNO:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNO
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      # Id do cluster KRaft: UUID de 16 bytes em base64 (22 caracteres). Fixo para o volume continuar válido entre recriações.
+      CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
+      # Com um broker só, fator de replicação 1 (em produção, 3; ver módulo 8/Strimzi).
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Tópico só nasce de propósito (kafka-init abaixo ou Kafka:CriarTopicosAoIniciar no Development).
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_NUM_PARTITIONS: 6
+    volumes:
+      - kafka-dados:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+
+  kafka-init:
+    # Roda uma vez e sai: cria os tópicos do contrato (SPEC) com 6 partições.
+    image: apache/kafka:4.3.2
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        for t in creditflow.propostas.v1 creditflow.pagamentos.v1 creditflow.simulacoes.v1; do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic "$$t" --partitions 6 --replication-factor 1
+        done
+        for t in creditflow-pagamentos.dlt creditflow-propostas.dlt; do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic "$$t" --partitions 1 --replication-factor 1
+        done
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --list
+    restart: "no"
+
+  kafka-ui:
+    image: ghcr.io/kafbat/kafka-ui:v1.5.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports: ["8085:8080"]
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:19092
+      DYNAMIC_CONFIG_ENABLED: "true"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    # start-dev: HTTP sem TLS, cache local, banco H2 embutido. Só para desenvolvimento.
+    # --import-realm: importa os .json de /opt/keycloak/data/import na subida (realm como código).
+    command: ["start-dev", "--import-realm", "--http-port=8081"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+      # O emissor (iss) dos tokens fica SEMPRE http://localhost:8081/realms/creditflow, peça você o token
+      # do navegador ou a API de dentro de um contêiner; e as URLs de back-channel (JWKS) seguem o host
+      # de quem pergunta (keycloak:8081 dentro da rede do compose).
+      KC_HOSTNAME: http://localhost:8081
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    ports: ["8081:8081"]
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    healthcheck:
+      # A imagem não tem curl: HTTP "na mão" pela porta de gerenciamento (9000).
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  api:
+    # Opcional (--profile app): a própria API em contêiner, com a imagem de produção.
+    profiles: ["app"]
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    depends_on:
+      postgres: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+      dragonfly: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+    ports: ["8080:8080"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      CREDITFLOW__PAPEL: api
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=creditflow;Username=creditflow;Password=creditflow
+      ConnectionStrings__Mongo: mongodb://mongo:27017
+      ConnectionStrings__Cache: dragonfly:6379
+      Kafka__BootstrapServers: kafka:19092
+      Auth__Authority: http://localhost:8081/realms/creditflow
+      Auth__MetadataAddress: http://keycloak:8081/realms/creditflow/.well-known/openid-configuration
+
+volumes:
+  postgres-dados:
+  mongo-dados:
+  kafka-dados:

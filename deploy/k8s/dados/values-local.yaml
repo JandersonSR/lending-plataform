@@ -1,0 +1,26 @@
+# Laboratório (kind): um nó KRaft com os dois papéis, sem TLS, sem SCRAM, sem ACL, Dragonfly sem senha.
+kafka:
+  pools:
+    - nome: unico
+      papeis: [controller, broker]
+      replicas: 1
+      disco: 5Gi
+      recursos:
+        requests: { cpu: 200m, memory: 1Gi }
+        limits: { memory: 1536Mi }
+  classeDeDisco: ""
+  rackPorZona: false
+  replicacao: 1
+  minInsync: 1
+  listenerPlano: true
+usuarios:
+  habilitado: false
+dragonfly:
+  replicas: 1
+  memoriaMaxima: 256mb
+  recursos:
+    requests: { cpu: 100m, memory: 320Mi }
+    limits: { memory: 320Mi }
+  senhaDoCofre: false
+lojaKafka:
+  habilitado: false

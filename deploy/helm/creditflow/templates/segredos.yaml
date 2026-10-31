@@ -1,0 +1,78 @@
+{{- /*
+Segredos usados pelos perfis habilitados (e o do KEDA, se algum perfil usa keda).
+segredos.habilitado=true  -> ExternalSecret (ESO busca no Key Vault ou nos Secrets do Strimzi)
+segredos.habilitado=false -> Secret comum a partir de segredosLocais (só para kind/minikube)
+O item "migracoes" é criado em migracoes.yaml, como hook.
+*/ -}}
+{{- $usados := dict }}
+{{- range $nome, $p := .Values.perfis }}
+{{- if $p.habilitado }}
+{{- range $p.segredos }}{{ $_ := set $usados . true }}{{ end }}
+{{- if and $p.autoescala (eq $p.autoescala.tipo "keda") }}{{ $_ := set $usados $p.autoescala.kafka.segredo true }}{{ end }}
+{{- end }}
+{{- end }}
+{{- range $item := keys $usados | sortAlpha }}
+{{- $nomeSecret := include "creditflow.nomeSegredo" (dict "raiz" $ "item" $item) }}
+{{- if $.Values.segredos.habilitado }}
+{{- $def := index $.Values.segredos.itens $item | required (printf "segredos.itens.%s não existe" $item) }}
+---
+{{ include "creditflow.externalSecret" (dict "raiz" $ "item" $item "def" $def "nome" $nomeSecret "hook" false) }}
+{{- else }}
+{{- $local := index (default (dict) $.Values.segredosLocais) $item | required (printf "segredosLocais.%s não existe (segredos.habilitado=false)" $item) }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $nomeSecret }}
+  labels:
+    {{- include "creditflow.rotulosComuns" $ | nindent 4 }}
+type: Opaque
+stringData:
+  {{- range $k, $v := $local }}
+  {{ $k }}: {{ $v | toString | quote }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
+{{- define "creditflow.externalSecret" -}}
+{{- $loja := index .raiz.Values.segredos.lojas .def.loja | required (printf "segredos.lojas.%s não existe" .def.loja) -}}
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: {{ .nome }}
+  labels:
+    {{- include "creditflow.rotulosComuns" .raiz | nindent 4 }}
+  {{- if .hook }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-20"
+    helm.sh/hook-delete-policy: before-hook-creation
+  {{- end }}
+spec:
+  refreshInterval: {{ .raiz.Values.segredos.intervaloAtualizacao }}
+  secretStoreRef:
+    kind: {{ $loja.kind }}
+    name: {{ $loja.name }}
+  target:
+    name: {{ .nome }}
+    creationPolicy: Owner
+    template:
+      engineVersion: v2
+      data:
+        {{- range $k, $v := .def.template }}
+        {{ $k }}: {{ $v | toString | quote }}
+        {{- end }}
+  data:
+    {{- range $alias, $remoto := .def.dados }}
+    - secretKey: {{ $alias }}
+      remoteRef:
+        {{- if kindIs "map" $remoto }}
+        key: {{ $remoto.chave }}
+        {{- with $remoto.propriedade }}
+        property: {{ . }}
+        {{- end }}
+        {{- else }}
+        key: {{ $remoto }}
+        {{- end }}
+    {{- end }}
+{{- end -}}

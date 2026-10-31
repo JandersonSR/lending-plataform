@@ -1,0 +1,77 @@
+{{- /*
+cert-manager: emissor ACME (Let's Encrypt) que resolve o desafio HTTP-01 pendurando
+uma HTTPRoute temporária no listener "http" do Gateway público.
+(O cert-manager precisa estar com config.enableGatewayAPI=true: ver infra/terraform/20-plataforma.)
+*/ -}}
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt
+spec:
+  acme:
+    server: {{ .Values.acme.servidor }}
+    email: {{ required "acme.email é obrigatório" .Values.acme.email | quote }}
+    privateKeySecretRef:
+      name: letsencrypt-conta
+    solvers:
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs:
+              - kind: Gateway
+                name: publico
+                namespace: gateway
+                sectionName: http
+---
+{{- /*
+External Secrets: a ServiceAccount que o ESO usa para falar com o Key Vault.
+As anotações dizem QUAL identidade gerenciada (client id) e de qual tenant; o ESO troca
+o token desta ServiceAccount por um token do Entra ID (credencial federada criada no
+Terraform 10-azure, subject system:serviceaccount:external-secrets:eso-azure-kv).
+*/}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eso-azure-kv
+  namespace: external-secrets
+  annotations:
+    azure.workload.identity/client-id: {{ required "azure.esoClientId é obrigatório" .Values.azure.esoClientId | quote }}
+    azure.workload.identity/tenant-id: {{ required "azure.tenantId é obrigatório" .Values.azure.tenantId | quote }}
+---
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: azure-kv
+spec:
+  provider:
+    azurekv:
+      authType: WorkloadIdentity
+      vaultUrl: {{ required "azure.keyVaultUrl é obrigatório" .Values.azure.keyVaultUrl | quote }}
+      serviceAccountRef:
+        name: eso-azure-kv
+        namespace: external-secrets
+  # Quais namespaces podem usar esta loja. Sem isso, qualquer namespace leria qualquer segredo do cofre.
+  conditions:
+    - namespaces: [creditflow, creditflow-dados, keycloak, harbor, observabilidade]
+{{- if .Values.assinatura.habilitado }}
+---
+{{- /*
+policy-controller (Sigstore): nos namespaces com o rótulo policy.sigstore.dev/include=true,
+o webhook de admissão recusa imagem do Harbor que não tenha assinatura keyless feita
+pelo workflow de CI da main (identidade OIDC do GitHub registrada no Fulcio/Rekor).
+*/}}
+apiVersion: policy.sigstore.dev/v1beta1
+kind: ClusterImagePolicy
+metadata:
+  name: creditflow-assinada
+spec:
+  images:
+    - glob: {{ .Values.assinatura.imagens | quote }}
+  authorities:
+    - keyless:
+        url: https://fulcio.sigstore.dev
+        identities:
+          - issuer: {{ .Values.assinatura.emissor | quote }}
+            subjectRegExp: {{ .Values.assinatura.identidade | quote }}
+      ctlog:
+        url: https://rekor.sigstore.dev
+{{- end }}

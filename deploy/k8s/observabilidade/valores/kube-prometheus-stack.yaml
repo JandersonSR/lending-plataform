@@ -1,0 +1,61 @@
+# Chart prometheus-community/kube-prometheus-stack 92.x: Prometheus Operator, Prometheus,
+# Alertmanager, Grafana, kube-state-metrics e node-exporter.
+fullnameOverride: kps
+prometheus:
+  prometheusSpec:
+    # Sem isto, o Prometheus só enxerga ServiceMonitor/PodMonitor/PrometheusRule com o rótulo do release.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    retention: 15d
+    # O SLO usa janela de 30 dias; com 15 dias de retenção, a razão "30d" na verdade cobre 15.
+    # Em produção: retenção >= 31d ou um armazenamento de longo prazo (Thanos, Mimir, Azure Monitor).
+    resources:
+      requests: { cpu: 500m, memory: 2Gi }
+      limits: { memory: 4Gi }
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: managed-csi-premium
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 50Gi
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+grafana:
+  # Sem Ingress: acesso por "kubectl port-forward svc/kps-grafana 3000:80 -n observabilidade".
+  admin:
+    existingSecret: grafana-admin
+    userKey: usuario
+    passwordKey: senha
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      url: http://loki.observabilidade.svc:3100
+      jsonData:
+        derivedFields:
+          - name: TraceID
+            matcherType: label
+            matcherRegex: trace_id
+            datasourceUid: tempo
+            url: "$${__value.raw}"
+    - name: Tempo
+      type: tempo
+      uid: tempo
+      url: http://tempo.observabilidade.svc:3200
+      jsonData:
+        tracesToLogsV2:
+          datasourceUid: loki
+          filterByTraceID: true
+        serviceMap:
+          datasourceUid: prometheus

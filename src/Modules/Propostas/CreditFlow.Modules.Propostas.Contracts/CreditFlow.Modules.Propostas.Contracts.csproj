@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CreditFlow.Modules.Propostas.Contracts</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    Só o que outros módulos podem ver de Propostas: a consulta síncrona e os eventos de integração
+    (Eventos/EventosDePropostas.cs: PropostaCriada, PropostaAprovada, PropostaRecusada, ContratoAssinado),
+    que usam [EventoIntegracao] do BuildingBlocks (módulo 6).
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\CreditFlow.BuildingBlocks\CreditFlow.BuildingBlocks.csproj" />
+  </ItemGroup>
+
+</Project>

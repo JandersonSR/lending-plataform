@@ -1,0 +1,24 @@
+{{- range $nome, $p := .Values.perfis }}
+{{- if and $p.habilitado $p.pdb }}
+{{- $ctx := dict "raiz" $ "perfil" $nome "cfg" $p }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "creditflow.nomePerfil" $ctx }}
+  labels:
+    {{- include "creditflow.rotulosPerfil" $ctx | nindent 4 }}
+spec:
+  {{- if hasKey $p.pdb "minAvailable" }}
+  minAvailable: {{ $p.pdb.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ $p.pdb.maxUnavailable | default 1 }}
+  {{- end }}
+  # Pods que ainda não ficaram prontos podem ser removidos num dreno de nó,
+  # mesmo que o orçamento esteja estourado: evita travar a manutenção do AKS.
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      {{- include "creditflow.seletorPerfil" $ctx | nindent 6 }}
+{{- end }}
+{{- end }}

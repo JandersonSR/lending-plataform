@@ -1,0 +1,23 @@
+{{- range $nome, $p := .Values.perfis }}
+{{- $temServico := true }}
+{{- if hasKey $p "servico" }}{{ $temServico = $p.servico }}{{ end }}
+{{- if and $p.habilitado $temServico }}
+{{- $ctx := dict "raiz" $ "perfil" $nome "cfg" $p }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "creditflow.nomePerfil" $ctx }}
+  labels:
+    {{- include "creditflow.rotulosPerfil" $ctx | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "creditflow.seletorPerfil" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+{{- end }}
+{{- end }}

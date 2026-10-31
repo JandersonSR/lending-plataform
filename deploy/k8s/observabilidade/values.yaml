@@ -1,0 +1,21 @@
+# Rótulo que o Prometheus do kube-prometheus-stack usa para achar as regras
+# (com ruleSelectorNilUsesHelmValues=false ele pega todas; o rótulo fica por clareza).
+rotulos:
+  release: kube-prometheus-stack
+
+slo:
+  simulacao:
+    servico: creditflow-api-simulacao
+    rota: /v1/simulacoes
+    disponibilidade: 0.995       # 99,5% das requisições sem 5xx em 30 dias
+    latenciaLimite: "0.25"       # PRECISA ser um limite de bucket do http.server.request.duration
+    latenciaObjetivo: 0.99       # 99% abaixo de 250 ms
+  desembolso:
+    limiteSegundos: "300"        # limite de bucket de creditflow.desembolso.duracao
+    objetivo: 0.99               # 99% dos desembolsos concluídos em até 5 minutos do contrato
+
+alertas:
+  # Rótulo usado pelo Alertmanager para rotear (página x ticket).
+  severidadePagina: critical
+  severidadeTicket: warning
+  runbooks: https://github.com/JandersonSR/lending-plataform/blob/main/docs/runbooks

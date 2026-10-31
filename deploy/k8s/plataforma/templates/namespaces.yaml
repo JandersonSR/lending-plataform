@@ -1,0 +1,48 @@
+{{- /*
+Namespaces dos componentes. "restricted" do Pod Security nos namespaces de aplicação:
+o API server recusa pod que rode como root, peça privilégio ou não declare seccomp.
+O namespace creditflow também entra na política de assinatura (policy-controller).
+*/ -}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: creditflow
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    {{- if .Values.assinatura.habilitado }}
+    policy.sigstore.dev/include: "true"
+    {{- end }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: creditflow-dados
+  labels:
+    # O Strimzi e o operador do Dragonfly já geram pods compatíveis com "restricted";
+    # "baseline" deixa margem para o Job de bootstrap e para depuração.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keycloak
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observabilidade
+  labels:
+    # node-exporter (kube-prometheus-stack) precisa de hostNetwork/hostPID.
+    pod-security.kubernetes.io/enforce: privileged

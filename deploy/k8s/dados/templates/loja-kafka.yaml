@@ -1,0 +1,69 @@
+{{- /*
+Os Secrets dos KafkaUsers e a CA do cluster ficam em creditflow-dados (onde o Strimzi
+os cria). A aplicação roda em creditflow. Em vez de dar à aplicação permissão de ler
+Secrets de outro namespace, o ESO copia SÓ os Secrets necessários:
+  ServiceAccount eso-leitor-kafka (em creditflow)
+    -> Role em creditflow-dados que lê apenas os Secrets listados (resourceNames)
+    -> SecretStore "kafka-usuarios" (em creditflow), provedor "kubernetes"
+*/ -}}
+{{- if .Values.lojaKafka.habilitado }}
+{{- $app := .Values.lojaKafka.namespaceApp }}
+{{- $c := .Values.kafka.nome }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eso-leitor-kafka
+  namespace: {{ $app }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: eso-leitor-kafka
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch]
+    resourceNames:
+      - creditflow-geral
+      - creditflow-simulacao
+      - creditflow-pagamentos
+      - creditflow-keda
+      - {{ $c }}-cluster-ca-cert
+  - apiGroups: [authorization.k8s.io]
+    resources: [selfsubjectrulesreviews]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: eso-leitor-kafka
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: eso-leitor-kafka
+subjects:
+  - kind: ServiceAccount
+    name: eso-leitor-kafka
+    namespace: {{ $app }}
+---
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: kafka-usuarios
+  namespace: {{ $app }}
+spec:
+  provider:
+    kubernetes:
+      remoteNamespace: {{ .Release.Namespace }}
+      server:
+        url: https://kubernetes.default.svc
+        caProvider:
+          type: ConfigMap
+          name: kube-root-ca.crt
+          key: ca.crt
+      auth:
+        serviceAccount:
+          name: eso-leitor-kafka
+{{- end }}

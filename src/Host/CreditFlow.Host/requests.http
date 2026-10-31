@@ -1,0 +1,29 @@
+### Requisições prontas (Visual Studio, Rider, VS Code com REST Client)
+@api = http://localhost:8080
+
+### Faixas de score e taxas (público)
+GET {{api}}/v1/simulacoes/taxas
+
+### Simular Price: 10.000 em 12 meses, sem cliente (faixa D)
+POST {{api}}/v1/simulacoes
+Content-Type: application/json
+
+{ "valor": 10000.00, "prazoMeses": 12, "sistema": "price" }
+
+### Simular SAC
+POST {{api}}/v1/simulacoes
+Content-Type: application/json
+
+{ "valor": 10000.00, "prazoMeses": 12, "sistema": "sac" }
+
+### Erro de validação: valor e prazo fora da faixa (400 com os dois campos)
+POST {{api}}/v1/simulacoes
+Content-Type: application/json
+
+{ "valor": 500, "prazoMeses": 60, "sistema": "price" }
+
+### Liveness
+GET {{api}}/healthz/live
+
+### Readiness
+GET {{api}}/healthz/ready

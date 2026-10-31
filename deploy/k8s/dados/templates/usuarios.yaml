@@ -1,0 +1,77 @@
+{{- /*
+Um KafkaUser por perfil. O User Operator cria o usuário SCRAM, aplica as ACLs e grava a
+senha num Secret com o MESMO nome do KafkaUser, neste namespace (creditflow-dados).
+Esses Secrets são copiados para o namespace da aplicação pelo ESO (lojaKafka).
+Grupos de consumidor por prefixo "creditflow-": os nomes reais vêm do código
+(MensageriaServiceCollectionExtensions: grupo = nome do consumidor, DLT = <grupo>.dlt).
+*/ -}}
+{{- if .Values.usuarios.habilitado }}
+{{- $c := .Values.kafka.nome }}
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: creditflow-geral
+  labels:
+    strimzi.io/cluster: {{ $c }}
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+      # Propostas publica (outbox) e consome o resultado do desembolso (saga);
+      # Notificações consome os três tópicos.
+      {{- include "dados.acl" (dict "tipo" "topic" "nome" "creditflow.propostas.v1" "ops" (list "Write" "Describe" "Read")) | nindent 6 }}
+      {{- include "dados.acl" (dict "tipo" "topic" "nome" "creditflow.pagamentos.v1" "ops" (list "Read" "Describe")) | nindent 6 }}
+      {{- include "dados.acl" (dict "tipo" "topic" "nome" "creditflow.simulacoes.v1" "ops" (list "Read" "Describe")) | nindent 6 }}
+      {{- include "dados.acl" (dict "tipo" "topic" "nome" "creditflow-propostas.dlt" "ops" (list "Write" "Describe")) | nindent 6 }}
+      {{- include "dados.acl" (dict "tipo" "topic" "nome" "creditflow-notificacoes.dlt" "ops" (list "Write" "Describe")) | nindent 6 }}
+      {{- include "dados.acl" (dict "tipo" "group" "nome" "creditflow-" "padrao" "prefix" "ops" (list "Read")) | nindent 6 }}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: creditflow-simulacao
+  labels:
+    strimzi.io/cluster: {{ $c }}
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+      {{- include "dados.acl" (dict "tipo" "topic" "nome" "creditflow.simulacoes.v1" "ops" (list "Write" "Describe")) | nindent 6 }}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: creditflow-pagamentos
+  labels:
+    strimzi.io/cluster: {{ $c }}
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+      {{- include "dados.acl" (dict "tipo" "topic" "nome" "creditflow.propostas.v1" "ops" (list "Read" "Describe")) | nindent 6 }}
+      {{- include "dados.acl" (dict "tipo" "topic" "nome" "creditflow.pagamentos.v1" "ops" (list "Write" "Describe")) | nindent 6 }}
+      {{- include "dados.acl" (dict "tipo" "topic" "nome" "creditflow-pagamentos.dlt" "ops" (list "Write" "Describe")) | nindent 6 }}
+      {{- include "dados.acl" (dict "tipo" "group" "nome" "creditflow-pagamentos" "ops" (list "Read" "Describe")) | nindent 6 }}
+---
+# O KEDA só precisa LER o lag: descrever o grupo e o tópico, e nada mais.
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: creditflow-keda
+  labels:
+    strimzi.io/cluster: {{ $c }}
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+      {{- include "dados.acl" (dict "tipo" "topic" "nome" "creditflow.propostas.v1" "ops" (list "Describe")) | nindent 6 }}
+      {{- include "dados.acl" (dict "tipo" "group" "nome" "creditflow-pagamentos" "ops" (list "Describe")) | nindent 6 }}
+{{- end }}

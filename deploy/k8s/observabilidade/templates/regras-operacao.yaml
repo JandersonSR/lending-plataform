@@ -1,0 +1,96 @@
+{{- /*
+Alertas de CAUSA, para os quatro incidentes do game day (lição 12.4). Os alertas de SLO
+dizem que o usuário está sofrendo; estes dizem onde olhar. Cada um aponta o runbook.
+*/ -}}
+{{- $rb := .Values.alertas.runbooks }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: creditflow-operacao
+  labels:
+    {{- toYaml .Values.rotulos | nindent 4 }}
+spec:
+  groups:
+    - name: creditflow-operacao
+      rules:
+        - alert: KafkaLagPagamentosAlto
+          # kafka_consumergroup_lag vem do Kafka Exporter que o Strimzi sobe (kafkaExporter no CR Kafka).
+          expr: sum by (consumergroup, topic) (kafka_consumergroup_lag{consumergroup="creditflow-pagamentos"}) > 500
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "Lag do grupo {{ "{{" }} $labels.consumergroup {{ "}}" }} em {{ "{{" }} $labels.topic {{ "}}" }}: {{ "{{" }} $value {{ "}}" }} mensagens"
+            runbook_url: {{ printf "%s/kafka-lag.md" $rb | quote }}
+        - alert: KafkaLagPagamentosCrescendo
+          # Lag que só cresce por 15 min: o consumidor parou ou não dá conta, e o KEDA já está no máximo?
+          expr: deriv(sum(kafka_consumergroup_lag{consumergroup="creditflow-pagamentos"})[15m:1m]) > 0 and sum(kafka_consumergroup_lag{consumergroup="creditflow-pagamentos"}) > 100
+          for: 15m
+          labels: { severity: critical }
+          annotations:
+            summary: "Lag do creditflow-pagamentos crescendo há 15 minutos"
+            runbook_url: {{ printf "%s/kafka-lag.md" $rb | quote }}
+        - alert: MensagensNaDlt
+          expr: sum by (service_name) (increase(creditflow_mensageria_consumidor_dlt_total[15m])) > 0
+          labels: { severity: warning }
+          annotations:
+            summary: "Mensagens indo para a DLT em {{ "{{" }} $labels.service_name {{ "}}" }}"
+            runbook_url: {{ printf "%s/kafka-lag.md" $rb | quote }}
+        - alert: KeycloakSemInstanciaPronta
+          expr: kube_statefulset_status_replicas_ready{namespace="keycloak",statefulset="keycloak"} < 1
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: "Keycloak sem instância pronta: logins novos falham (tokens já emitidos seguem válidos até expirar)"
+            runbook_url: {{ printf "%s/keycloak-fora.md" $rb | quote }}
+        - alert: ApiRespondendo401Demais
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{service_namespace="creditflow",http_response_status_code="401"}[5m]))
+            / sum(rate(http_server_request_duration_seconds_count{service_namespace="creditflow"}[5m])) > 0.2
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "Mais de 20% das requisições com 401: Keycloak, relógio, issuer ou chave de assinatura?"
+            runbook_url: {{ printf "%s/keycloak-fora.md" $rb | quote }}
+        - alert: DragonflySemPrimario
+          expr: kube_statefulset_status_replicas_ready{namespace="creditflow-dados",statefulset="creditflow-cache"} < 1
+          for: 2m
+          labels: { severity: warning }
+          annotations:
+            summary: "Dragonfly sem réplica pronta: a API cai para a fonte (Mongo/config) e a latência sobe"
+            runbook_url: {{ printf "%s/dragonfly-fora.md" $rb | quote }}
+        - alert: MigracaoDemorando
+          expr: kube_job_status_active{namespace="creditflow",job_name=~".*-migracoes"} > 0
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "Job de migração rodando há mais de 5 minutos: lock no banco?"
+            runbook_url: {{ printf "%s/migracao-travada.md" $rb | quote }}
+        - alert: MigracaoFalhou
+          expr: kube_job_status_failed{namespace="creditflow",job_name=~".*-migracoes"} > 0
+          labels: { severity: critical }
+          annotations:
+            summary: "Job de migração falhou: o deploy está parado no PreSync"
+            runbook_url: {{ printf "%s/migracao-travada.md" $rb | quote }}
+        - alert: PodsReiniciando
+          expr: increase(kube_pod_container_status_restarts_total{namespace="creditflow"}[15m]) > 3
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ "{{" }} $labels.pod {{ "}}" }} reiniciou mais de 3 vezes em 15 minutos (liveness? OOMKilled?)"
+            runbook_url: {{ printf "%s/deploy-e-rollback.md" $rb | quote }}
+---
+# Faz o Prometheus raspar o Kafka Exporter que o Strimzi cria junto do cluster Kafka.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: kafka-exporter
+  namespace: creditflow-dados
+  labels:
+    {{- toYaml .Values.rotulos | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      strimzi.io/kind: Kafka
+      strimzi.io/name: creditflow-kafka-exporter
+  podMetricsEndpoints:
+    - port: tcp-prometheus
+      path: /metrics
