@@ -14,6 +14,11 @@ CREATE TABLE IF NOT EXISTS clientes.clientes (
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_clientes_cpf ON clientes.clientes (cpf);
 
+-- Login (claim "sub" do Keycloak) ligado ao cliente, um para um. NULL permitido (cadastro feito por backoffice);
+-- no Postgres, um índice único aceita vários NULLs.
+ALTER TABLE clientes.clientes ADD COLUMN IF NOT EXISTS usuario_id varchar(64) NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_clientes_usuario ON clientes.clientes (usuario_id);
+
 CREATE TABLE IF NOT EXISTS clientes.consentimentos (
     id              uuid         PRIMARY KEY,
     cliente_id      uuid         NOT NULL REFERENCES clientes.clientes (id) ON DELETE CASCADE,
